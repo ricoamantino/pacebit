@@ -75,6 +75,13 @@ corrigida em `image-size`, dependência exclusiva da ferramenta de desenvolvimen
 - [ ] Gerar ou preservar o pacote instalável como artefato do workflow.
 - [ ] Confirmar que falhas de validação impedem a produção do artefato final.
 
+Validação local de 2026-08-29: variável pública do client ID configurada no GitHub, actions
+fixadas por SHA conferidas contra suas tags e workflow revisado sem secrets, `pull_request_target`
+ou permissões de escrita. `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm build`, `pnpm zip`
+e `git diff --check` concluídos. O ZIP contém somente os dez arquivos de runtime esperados e o
+manifesto MV3 preserva exatamente os acessos aprovados. Os itens permanecem abertos até uma
+execução real na `main` comprovar o job e o artefato remoto.
+
 ## 2. Domínio do timer
 
 ### 2.1 Modelo persistente
