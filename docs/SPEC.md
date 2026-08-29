@@ -50,14 +50,21 @@ A credencial real e a chave pública foram incorporadas e validadas posteriormen
 
 ### 1.3 Scripts e qualidade
 
-- [ ] Configurar Biome para lint e formatação.
-- [ ] Configurar Vitest com ambiente adequado aos testes de domínio e React.
-- [ ] Configurar React Testing Library.
-- [ ] Configurar Playwright para executar a extensão carregada no Chromium.
-- [ ] Adicionar os scripts `dev`, `build`, `typecheck`, `lint`, `format`, `test`, `test:watch`, `test:e2e` e `check`.
-- [ ] Garantir que `pnpm check` execute typecheck, lint e testes unitários.
-- [ ] Fixar as dependências em lockfile e validar instalação com lockfile imutável.
-- [ ] Executar e registrar o primeiro `pnpm check` e o primeiro build limpo.
+- [x] Configurar Biome para lint e formatação.
+- [x] Configurar Vitest com ambiente adequado aos testes de domínio e React.
+- [x] Configurar React Testing Library.
+- [x] Configurar Playwright para executar a extensão carregada no Chromium.
+- [x] Adicionar os scripts `dev`, `build`, `typecheck`, `lint`, `format`, `test`, `test:watch`, `test:e2e` e `check`.
+- [x] Garantir que `pnpm check` execute typecheck, lint e testes unitários.
+- [x] Fixar as dependências em lockfile e validar instalação com lockfile imutável.
+- [x] Executar e registrar o primeiro `pnpm check` e o primeiro build limpo.
+
+Validação de 2026-08-29: `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test:e2e` e
+`pnpm build` concluídos. Um teste do popup passou no Vitest e um smoke passou no Chromium com a
+extensão carregada pelo ID estável, sem erro de console ou página. O manifesto de produção manteve
+os acessos aprovados e não incorporou a configuração sintética de teste. `pnpm audit --prod` não
+encontrou vulnerabilidades; a auditoria completa permanece com dois avisos conhecidos e sem versão
+corrigida em `image-size`, dependência exclusiva da ferramenta de desenvolvimento `web-ext`.
 
 ### 1.4 Integração contínua
 
