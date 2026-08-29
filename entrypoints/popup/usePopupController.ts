@@ -7,6 +7,7 @@ import {
 } from '../../src/google/authorization';
 import {
   type GoogleTaskListLoad,
+  type GoogleTasksCatalogProgressListener,
   type GoogleTasksCatalogResult,
   loadGoogleTasksCatalog,
 } from '../../src/google/tasks-catalog';
@@ -15,6 +16,8 @@ import {
   type StoredTimerState,
   type StoredTimerStateObservation,
 } from '../../src/storage/session-storage';
+import { getLocalCivilDate } from '../../src/tasks/scheduled-date';
+import { type PrioritizedGoogleTask, prioritizeGoogleTasks } from '../../src/tasks/task-priority';
 import { calculateDailyTotal } from '../../src/timer/daily-total';
 import { calculateActiveSessionDuration } from '../../src/timer/duration';
 import type { ActiveSession, DurationMs, TimestampMs } from '../../src/timer/session';
@@ -26,6 +29,7 @@ export interface PopupDependencies {
   readonly loadTasksCatalog: (
     accessToken: string,
     signal?: AbortSignal,
+    onProgress?: GoogleTasksCatalogProgressListener,
   ) => Promise<GoogleTasksCatalogResult>;
   readonly observeTimerState: (
     listener: (observation: StoredTimerStateObservation) => void,
@@ -60,6 +64,7 @@ export interface PopupController {
   readonly google: PopupGoogleState;
   readonly local: PopupLocalState;
   readonly taskCount: number;
+  readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
   readonly connectGoogle: () => void;
   readonly retryGoogle: () => void;
 }
@@ -132,9 +137,16 @@ export function usePopupController(
       previousTaskLists: readonly GoogleTaskListLoad[],
     ): Promise<void> => {
       commitGoogleState({ status: 'loading', taskLists: previousTaskLists });
+      const onProgress = createProgressListener(
+        operation,
+        previousTaskLists,
+        isCurrentOperation,
+        commitGoogleState,
+      );
       let result = await dependencies.loadTasksCatalog(
         authorization.accessToken,
         operation.controller.signal,
+        onProgress,
       );
 
       if (!isCurrentOperation(operation)) {
@@ -152,6 +164,7 @@ export function usePopupController(
           result = await dependencies.loadTasksCatalog(
             renewal.accessToken,
             operation.controller.signal,
+            onProgress,
           );
 
           if (!isCurrentOperation(operation)) {
@@ -268,8 +281,26 @@ export function usePopupController(
     google,
     local,
     taskCount: countTasks(google.taskLists),
+    prioritizedTasks: prioritizeGoogleTasks(google.taskLists, getLocalCivilDate(nowMs)),
     connectGoogle: () => void authorizeAndLoad('interactive'),
     retryGoogle: () => void authorizeAndLoad('retry'),
+  };
+}
+
+function createProgressListener(
+  operation: ActiveOperation,
+  previousTaskLists: readonly GoogleTaskListLoad[],
+  isCurrentOperation: (operation: ActiveOperation) => boolean,
+  commitGoogleState: (state: PopupGoogleState) => void,
+): GoogleTasksCatalogProgressListener | undefined {
+  if (previousTaskLists.length > 0) {
+    return undefined;
+  }
+
+  return ({ taskLists }) => {
+    if (isCurrentOperation(operation)) {
+      commitGoogleState({ status: 'loading', taskLists });
+    }
   };
 }
 

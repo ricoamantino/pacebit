@@ -345,14 +345,25 @@ manifesto permaneceu sem novos acessos, background ou content script.
 
 ### 5.2 Priorização e carregamento
 
-- [ ] Apresentar primeiro a sessão ativa, quando existir.
-- [ ] Ordenar tarefas vencidas da data mais antiga para a mais recente.
-- [ ] Apresentar depois tarefas de hoje, sem data e futuras da data mais próxima para a mais distante.
-- [ ] Dentro do mesmo grupo e data, desempatar pela ordem estável das listas retornadas, pela `position` da tarefa e finalmente pelo ID.
-- [ ] Preservar a ordem já apresentada quando novas páginas não alterarem a prioridade relativa dos itens existentes.
-- [ ] Exibir o nome da lista junto de cada tarefa.
-- [ ] Tratar subtarefas como itens independentes sem oferecer edição de hierarquia.
-- [ ] Indicar carregamento progressivo enquanto ainda houver páginas e nunca rotular resultado parcial como completo.
+- [x] Apresentar primeiro a sessão ativa, quando existir.
+- [x] Ordenar tarefas vencidas da data mais antiga para a mais recente.
+- [x] Apresentar depois tarefas de hoje, sem data e futuras da data mais próxima para a mais distante.
+- [x] Dentro do mesmo grupo e data, desempatar pela ordem estável das listas retornadas, pela `position` da tarefa e finalmente pelo ID.
+- [x] Preservar a ordem já apresentada quando novas páginas não alterarem a prioridade relativa dos itens existentes.
+- [x] Exibir o nome da lista junto de cada tarefa.
+- [x] Tratar subtarefas como itens independentes sem oferecer edição de hierarquia.
+- [x] Indicar carregamento progressivo enquanto ainda houver páginas e nunca rotular resultado parcial como completo.
+
+Validação de 2026-08-29: priorização e progresso aprovados em 12 testes novos, dentro de 183
+testes unitários totais. O domínio puro comprovou os quatro grupos, datas, ordem original das
+listas, `position`, ID, subtarefas e estabilidade diante de novas páginas. O carregador emitiu
+snapshots imutáveis após páginas e mudanças de lista, preservou conteúdo válido em falhas e
+cancelamentos e continuou sequencial. O popup apresentou tarefas durante a carga inicial,
+preservou o catálogo anterior em atualizações, descartou progresso obsoleto, recalculou os grupos
+na mudança do dia e manteve a sessão antes das tarefas. `pnpm check`, `pnpm test:e2e` (dois
+smokes), `pnpm build`, `pnpm audit --prod` e `git diff --check` passaram. A inspeção visual no
+Chromium confirmou a composição compacta e sem erros; o manifesto permaneceu sem novos acessos,
+background ou content script.
 
 ### 5.3 Acessibilidade e comportamento
 
@@ -361,17 +372,17 @@ manifesto permaneceu sem novos acessos, background ou content script.
 - [ ] Garantir foco visível e ordem de teclado previsível.
 - [ ] Não depender somente de cor para comunicar prioridade, estado ou falha.
 - [ ] Desabilitar ações impossíveis com explicação curta.
-- [ ] Manter títulos de tarefa e lista como texto não confiável, sem injeção de HTML.
+- [x] Manter títulos de tarefa e lista como texto não confiável, sem injeção de HTML.
 - [ ] Garantir comportamento seguro sob remontagem do React e efeitos repetidos em desenvolvimento.
 
 ### 5.4 Testes do popup
 
 - [x] Testar os estados desconectado, conectando, carregando, vazio, parcial, offline e erro recuperável com Testing Library.
-- [ ] Testar a prioridade completa e o desempate estável das tarefas.
-- [ ] Testar listas com títulos iguais, subtarefas e carregamento de novas páginas.
-- [ ] Testar que resultado parcial nunca é comunicado como completo.
+- [x] Testar a prioridade completa e o desempate estável das tarefas.
+- [x] Testar listas com títulos iguais, subtarefas e carregamento de novas páginas.
+- [x] Testar que resultado parcial nunca é comunicado como completo.
 - [ ] Testar foco, nomes acessíveis, teclado e estados desabilitados dos controles críticos.
-- [ ] Testar que dados remotos são renderizados como texto.
+- [x] Testar que dados remotos são renderizados como texto.
 
 ## 6. Execução, histórico e total diário
 

@@ -25,9 +25,24 @@ export type GoogleLoadedTaskList =
 export type GoogleTaskListLoad =
   | GoogleLoadedTaskList
   | {
+      readonly status: 'loading';
+      readonly taskList: GoogleTaskListItem;
+      readonly tasks: readonly GoogleTaskItem[];
+    }
+  | {
       readonly status: 'pending';
       readonly taskList: GoogleTaskListItem;
     };
+
+export interface GoogleTasksCatalogProgress {
+  readonly taskLists: readonly GoogleTaskListLoad[];
+}
+
+export type GoogleTasksCatalogProgressListener = (progress: GoogleTasksCatalogProgress) => void;
+
+export type GoogleTaskListProgressListener = (
+  taskList: Extract<GoogleTaskListLoad, { readonly status: 'loading' }>,
+) => void;
 
 export type GoogleTasksCatalogResult =
   | { readonly status: 'complete'; readonly taskLists: readonly GoogleTaskListLoad[] }
@@ -58,8 +73,9 @@ type TaskListPagesResult =
 export async function loadGoogleTasksCatalog(
   accessToken: string,
   signal?: AbortSignal,
+  onProgress?: GoogleTasksCatalogProgressListener,
 ): Promise<GoogleTasksCatalogResult> {
-  const taskListPages = await loadAllTaskListPages(accessToken, signal);
+  const taskListPages = await loadAllTaskListPages(accessToken, signal, onProgress);
 
   if (taskListPages.status !== 'success') {
     const taskLists = taskListPages.taskLists.map(pendingTaskList);
@@ -69,17 +85,24 @@ export async function loadGoogleTasksCatalog(
       : { status: taskListPages.status, taskLists };
   }
 
-  const taskLists: GoogleTaskListLoad[] = [];
+  const taskLists: GoogleTaskListLoad[] = taskListPages.taskLists.map(pendingTaskList);
 
   for (const [index, taskList] of taskListPages.taskLists.entries()) {
-    const loadedTaskList = await reloadGoogleTaskList(accessToken, taskList, signal);
-    taskLists.push(loadedTaskList);
+    const loadedTaskList = await reloadGoogleTaskList(
+      accessToken,
+      taskList,
+      signal,
+      (loadingTaskList) => {
+        taskLists[index] = loadingTaskList;
+        emitProgress(onProgress, taskLists);
+      },
+    );
+    taskLists[index] = loadedTaskList;
+    emitProgress(onProgress, taskLists);
 
     if (loadedTaskList.status !== 'incomplete' || !isGlobalInterruption(loadedTaskList.reason)) {
       continue;
     }
-
-    taskLists.push(...taskListPages.taskLists.slice(index + 1).map(pendingTaskList));
 
     if (loadedTaskList.reason === 'authorization-required') {
       return { status: 'authorization-required', taskLists };
@@ -101,10 +124,13 @@ export async function reloadGoogleTaskList(
   accessToken: string,
   taskList: GoogleTaskListItem,
   signal?: AbortSignal,
+  onProgress?: GoogleTaskListProgressListener,
 ): Promise<GoogleLoadedTaskList> {
   const tasks: GoogleTaskItem[] = [];
   const pageTokens = new Set<string>();
   let pageToken: string | undefined;
+
+  emitTaskListProgress(onProgress, taskList, tasks);
 
   while (true) {
     const result = await listGoogleTasksPage(accessToken, taskList.id, pageToken, signal);
@@ -119,6 +145,7 @@ export async function reloadGoogleTaskList(
     }
 
     tasks.push(...result.value.items.filter(isEligibleTask));
+    emitTaskListProgress(onProgress, taskList, tasks);
 
     if (result.value.nextPageToken === undefined) {
       return { status: 'complete', taskList, tasks };
@@ -136,6 +163,7 @@ export async function reloadGoogleTaskList(
 async function loadAllTaskListPages(
   accessToken: string,
   signal: AbortSignal | undefined,
+  onProgress: GoogleTasksCatalogProgressListener | undefined,
 ): Promise<TaskListPagesResult> {
   const taskLists: GoogleTaskListItem[] = [];
   const pageTokens = new Set<string>();
@@ -151,6 +179,7 @@ async function loadAllTaskListPages(
     }
 
     taskLists.push(...result.value.items);
+    emitProgress(onProgress, taskLists.map(pendingTaskList));
 
     if (result.value.nextPageToken === undefined) {
       return { status: 'success', taskLists };
@@ -182,4 +211,19 @@ function isGlobalInterruption(
 
 function pendingTaskList(taskList: GoogleTaskListItem): GoogleTaskListLoad {
   return { status: 'pending', taskList };
+}
+
+function emitTaskListProgress(
+  listener: GoogleTaskListProgressListener | undefined,
+  taskList: GoogleTaskListItem,
+  tasks: readonly GoogleTaskItem[],
+): void {
+  listener?.({ status: 'loading', taskList, tasks: [...tasks] });
+}
+
+function emitProgress(
+  listener: GoogleTasksCatalogProgressListener | undefined,
+  taskLists: readonly GoogleTaskListLoad[],
+): void {
+  listener?.({ taskLists: [...taskLists] });
 }

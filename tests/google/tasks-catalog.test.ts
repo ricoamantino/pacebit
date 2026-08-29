@@ -368,7 +368,92 @@ describe('Google Tasks catalog', () => {
       ['list-2', undefined],
     ]);
   });
+
+  it('emits immutable progress after list pages, list start, task pages and completion', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ items: [FIRST_LIST], nextPageToken: 'more-lists' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [SECOND_LIST] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ items: [task({ id: 'first-page' })], nextPageToken: 'more-tasks' }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [task({ id: 'second-page' })] }))
+      .mockResolvedValueOnce(jsonResponse({}));
+    const progress: GoogleTaskListLoad[][] = [];
+
+    const result = await loadGoogleTasksCatalog(ACCESS_TOKEN, undefined, (snapshot) => {
+      progress.push(snapshot.taskLists as GoogleTaskListLoad[]);
+    });
+
+    expect(result.status).toBe('complete');
+    expect(progress.map(progressSummary)).toEqual([
+      ['pending:list-1'],
+      ['pending:list-1', 'pending:list-2'],
+      ['loading:list-1:', 'pending:list-2'],
+      ['loading:list-1:first-page', 'pending:list-2'],
+      ['loading:list-1:first-page,second-page', 'pending:list-2'],
+      ['complete:list-1:first-page,second-page', 'pending:list-2'],
+      ['complete:list-1:first-page,second-page', 'loading:list-2:'],
+      ['complete:list-1:first-page,second-page', 'loading:list-2:'],
+      ['complete:list-1:first-page,second-page', 'complete:list-2:'],
+    ]);
+
+    expect(progress[0]).toEqual([{ status: 'pending', taskList: FIRST_LIST }]);
+    expect(progress[3]?.[0]).toMatchObject({
+      status: 'loading',
+      tasks: [decodedTask({ id: 'first-page' })],
+    });
+  });
+
+  it('reports cancellation once and does not emit after the operation finishes', async () => {
+    const controller = new AbortController();
+    const progress: GoogleTaskListLoad[][] = [];
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [FIRST_LIST] })).mockImplementationOnce(
+      (_url: URL, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(new DOMException('controlled abort', 'AbortError'));
+          });
+        }),
+    );
+
+    const loading = loadGoogleTasksCatalog(ACCESS_TOKEN, controller.signal, (snapshot) => {
+      progress.push(snapshot.taskLists as GoogleTaskListLoad[]);
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    controller.abort();
+
+    await expect(loading).resolves.toMatchObject({ status: 'cancelled' });
+    expect(progress.map(progressSummary)).toEqual([
+      ['pending:list-1'],
+      ['loading:list-1:'],
+      ['incomplete:list-1:'],
+    ]);
+    const completedEmissionCount = progress.length;
+    await Promise.resolve();
+    expect(progress).toHaveLength(completedEmissionCount);
+  });
+
+  it('emits isolated progress when reloading one task list', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ items: [task({ id: 'one' })], nextPageToken: 'next' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [task({ id: 'two' })] }));
+    const progress: string[][] = [];
+
+    await reloadGoogleTaskList(ACCESS_TOKEN, FIRST_LIST, undefined, (taskList) => {
+      progress.push(taskList.tasks.map(({ id }) => id));
+    });
+
+    expect(progress).toEqual([[], ['one'], ['one', 'two']]);
+  });
 });
+
+function progressSummary(taskLists: readonly GoogleTaskListLoad[]): string[] {
+  return taskLists.map((taskList) =>
+    taskList.status === 'pending'
+      ? `pending:${taskList.taskList.id}`
+      : `${taskList.status}:${taskList.taskList.id}:${taskList.tasks.map(({ id }) => id).join(',')}`,
+  );
+}
 
 function task(overrides: Readonly<Record<string, unknown>> = {}): Record<string, unknown> {
   return {

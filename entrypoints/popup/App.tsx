@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import type { CivilDate } from '../../src/tasks/scheduled-date';
+import type { PrioritizedGoogleTask, TaskPriorityGroup } from '../../src/tasks/task-priority';
 import {
   type PopupDependencies,
   type PopupGoogleState,
@@ -23,13 +25,15 @@ export function App({ dependencies }: AppProps) {
         </div>
       </header>
 
+      <CurrentSession state={controller.local} />
       <GoogleStatus
         state={controller.google}
         taskCount={controller.taskCount}
+        prioritizedTasks={controller.prioritizedTasks}
         onConnect={controller.connectGoogle}
         onRetry={controller.retryGoogle}
       />
-      <LocalOverview state={controller.local} />
+      <LocalTotals state={controller.local} />
     </main>
   );
 }
@@ -37,11 +41,18 @@ export function App({ dependencies }: AppProps) {
 interface GoogleStatusProps {
   readonly state: PopupGoogleState;
   readonly taskCount: number;
+  readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
   readonly onConnect: () => void;
   readonly onRetry: () => void;
 }
 
-function GoogleStatus({ state, taskCount, onConnect, onRetry }: GoogleStatusProps) {
+function GoogleStatus({
+  state,
+  taskCount,
+  prioritizedTasks,
+  onConnect,
+  onRetry,
+}: GoogleStatusProps) {
   const content = getGoogleStatusContent(state, taskCount);
 
   return (
@@ -76,7 +87,11 @@ function GoogleStatus({ state, taskCount, onConnect, onRetry }: GoogleStatusProp
         ) : null}
       </section>
 
-      <section className="card integration-card" aria-labelledby="tasks-heading">
+      <section
+        className="card integration-card"
+        aria-labelledby="tasks-heading"
+        aria-busy={state.status === 'loading'}
+      >
         <div className="section-heading-row">
           <h2 id="tasks-heading">Tarefas</h2>
           <span className={`status-label status-label--${content.tone}`}>{content.label}</span>
@@ -86,6 +101,14 @@ function GoogleStatus({ state, taskCount, onConnect, onRetry }: GoogleStatusProp
           <p>{content.message}</p>
           {content.detail ? <p className="status-detail">{content.detail}</p> : null}
         </div>
+
+        {prioritizedTasks.length > 0 ? <TaskGroups tasks={prioritizedTasks} /> : null}
+
+        {state.status === 'loading' ? (
+          <p className="loading-detail" role="status">
+            Outras listas ou páginas ainda estão sendo carregadas.
+          </p>
+        ) : null}
 
         {isRetryableState(state.status) ? (
           <button className="secondary-button" type="button" onClick={onRetry}>
@@ -103,14 +126,14 @@ function GoogleStatus({ state, taskCount, onConnect, onRetry }: GoogleStatusProp
   );
 }
 
-function LocalOverview({ state }: { readonly state: PopupLocalState }) {
+function CurrentSession({ state }: { readonly state: PopupLocalState }) {
   const summary = state.status === 'loading' ? undefined : state.value;
   const unavailable = state.status === 'error';
 
   return (
-    <section className="local-overview" aria-labelledby="local-heading">
+    <section className="local-overview" aria-labelledby="session-overview-heading">
       <div className="local-heading-row">
-        <h2 id="local-heading">Seu tempo</h2>
+        <h2 id="session-overview-heading">Seu tempo</h2>
         {unavailable ? (
           <p className="local-warning" role="status">
             Não foi possível atualizar os dados locais.
@@ -118,24 +141,33 @@ function LocalOverview({ state }: { readonly state: PopupLocalState }) {
         ) : null}
       </div>
 
-      <div className="summary-grid">
-        <SummaryCard title="Sessão atual">
-          {state.status === 'loading' ? (
-            <p>Carregando dados locais…</p>
-          ) : summary?.activeSession ? (
-            <>
-              <p className="summary-value">{formatDuration(summary.activeDurationMs)}</p>
-              <p className="summary-title">{summary.activeSession.task.title || 'Sem título'}</p>
-              <p className="summary-detail">
-                {summary.activeSession.taskList.title || 'Lista sem título'} ·{' '}
-                {summary.activeSession.state === 'running' ? 'Em execução' : 'Pausada'}
-              </p>
-            </>
-          ) : (
-            <p>{unavailable ? 'Dados locais indisponíveis.' : 'Nenhuma sessão em andamento.'}</p>
-          )}
-        </SummaryCard>
+      <SummaryCard title="Sessão atual">
+        {state.status === 'loading' ? (
+          <p>Carregando dados locais…</p>
+        ) : summary?.activeSession ? (
+          <>
+            <p className="summary-value">{formatDuration(summary.activeDurationMs)}</p>
+            <p className="summary-title">{summary.activeSession.task.title || 'Sem título'}</p>
+            <p className="summary-detail">
+              {summary.activeSession.taskList.title || 'Lista sem título'} ·{' '}
+              {summary.activeSession.state === 'running' ? 'Em execução' : 'Pausada'}
+            </p>
+          </>
+        ) : (
+          <p>{unavailable ? 'Dados locais indisponíveis.' : 'Nenhuma sessão em andamento.'}</p>
+        )}
+      </SummaryCard>
+    </section>
+  );
+}
 
+function LocalTotals({ state }: { readonly state: PopupLocalState }) {
+  const summary = state.status === 'loading' ? undefined : state.value;
+
+  return (
+    <section className="local-overview" aria-labelledby="totals-heading">
+      <h2 id="totals-heading">Resumo local</h2>
+      <div className="summary-grid">
         <SummaryCard title="Total de hoje">
           <p className="summary-value">{summary ? formatDuration(summary.dailyTotalMs) : '—'}</p>
           <p className="summary-detail">Tempo efetivamente registrado.</p>
@@ -154,6 +186,64 @@ function LocalOverview({ state }: { readonly state: PopupLocalState }) {
       </div>
     </section>
   );
+}
+
+const taskGroups: readonly { readonly id: TaskPriorityGroup; readonly title: string }[] = [
+  { id: 'overdue', title: 'Vencidas' },
+  { id: 'today', title: 'Hoje' },
+  { id: 'undated', title: 'Sem data' },
+  { id: 'future', title: 'Futuras' },
+];
+
+function TaskGroups({ tasks }: { readonly tasks: readonly PrioritizedGoogleTask[] }) {
+  return (
+    <div className="task-groups">
+      {taskGroups.map((group) => {
+        const groupTasks = tasks.filter((task) => task.group === group.id);
+
+        return groupTasks.length > 0 ? (
+          <section className="task-group" aria-labelledby={`task-group-${group.id}`} key={group.id}>
+            <h3 id={`task-group-${group.id}`}>{group.title}</h3>
+            <ul className="task-list">
+              {groupTasks.map((item) => (
+                <TaskItem item={item} key={`${item.taskList.id}:${item.task.id}`} />
+              ))}
+            </ul>
+          </section>
+        ) : null;
+      })}
+    </div>
+  );
+}
+
+function TaskItem({ item }: { readonly item: PrioritizedGoogleTask }) {
+  return (
+    <li className="task-item">
+      <p className="task-title">{item.task.title || 'Sem título'}</p>
+      <p className="task-context">
+        <span>{item.taskList.title || 'Lista sem título'}</span>
+        {item.task.parentId ? <span className="task-kind">Subtarefa</span> : null}
+      </p>
+      <p className={`task-date task-date--${item.group}`}>
+        {formatTaskDate(item.group, item.scheduledDate)}
+      </p>
+    </li>
+  );
+}
+
+function formatTaskDate(group: TaskPriorityGroup, date: CivilDate | undefined): string {
+  if (group === 'today') {
+    return 'Hoje';
+  }
+
+  if (group === 'undated' || !date) {
+    return 'Sem data';
+  }
+
+  const formattedDate = `${date.day.toString().padStart(2, '0')}/${date.month
+    .toString()
+    .padStart(2, '0')}`;
+  return group === 'overdue' ? `Vencida · ${formattedDate}` : `Agendada · ${formattedDate}`;
 }
 
 function SummaryCard({
@@ -210,7 +300,6 @@ function getGoogleStatusContent(state: PopupGoogleState, taskCount: number): Goo
         label: 'Conectado',
         tone: 'positive',
         message: availableTasksMessage(taskCount),
-        detail: 'A organização das tarefas será apresentada na próxima etapa.',
       };
     case 'empty':
       return {

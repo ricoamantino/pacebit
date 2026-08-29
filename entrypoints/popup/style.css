@@ -66,9 +66,12 @@ h1 {
 
 .app-header p,
 .status-detail,
+.loading-detail,
 .summary-detail,
 .summary-card > p:not(.summary-value),
-.local-warning {
+.local-warning,
+.task-context,
+.task-date {
   color: var(--muted);
   font-size: 0.8125rem;
   line-height: 1.45;
@@ -142,6 +145,75 @@ h3 {
   line-height: 1.45;
 }
 
+.loading-detail {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef3fb;
+}
+
+.task-groups,
+.task-group {
+  display: grid;
+  gap: 8px;
+}
+
+.task-groups {
+  gap: 14px;
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.task-title {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.task-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+.task-kind {
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: #e8edf5;
+  color: #354158;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.task-date {
+  font-weight: 650;
+}
+
+.task-date--overdue {
+  color: var(--warning);
+}
+
+.task-date--today {
+  color: var(--positive);
+}
+
 .primary-button,
 .secondary-button {
   min-height: 36px;
@@ -199,10 +271,6 @@ button:disabled {
   gap: 5px;
   min-width: 0;
   padding: 12px;
-}
-
-.summary-card:first-child {
-  grid-column: 1 / -1;
 }
 
 .summary-value {

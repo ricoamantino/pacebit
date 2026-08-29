@@ -26,6 +26,13 @@ test('carrega o popup da extensão no Chromium', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Total de hoje' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Histórico' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Conectar com Google' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Sessão atual' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Tarefas' })).toHaveAttribute('aria-busy', 'false');
+  expect(
+    await page
+      .locator('main > section[aria-labelledby="session-overview-heading"]')
+      .evaluate((session) => session.nextElementSibling?.classList.contains('google-regions')),
+  ).toBe(true);
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });

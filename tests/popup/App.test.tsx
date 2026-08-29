@@ -1,10 +1,14 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../entrypoints/popup/App';
 import type { PopupDependencies } from '../../entrypoints/popup/usePopupController';
 import type { GoogleAuthorizationResult } from '../../src/google/authorization';
-import type { GoogleTaskListLoad, GoogleTasksCatalogResult } from '../../src/google/tasks-catalog';
+import type {
+  GoogleTaskListLoad,
+  GoogleTasksCatalogProgressListener,
+  GoogleTasksCatalogResult,
+} from '../../src/google/tasks-catalog';
 import type {
   StoredTimerState,
   StoredTimerStateObservation,
@@ -39,6 +43,7 @@ describe('App', () => {
     expect(dependencies.loadTasksCatalog).toHaveBeenCalledWith(
       'interactive-token',
       expect.any(AbortSignal),
+      expect.any(Function),
     );
   });
 
@@ -303,6 +308,212 @@ describe('App', () => {
     expect(screen.getByText('Preparar relatório')).toBeVisible();
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
   });
+
+  it('apresenta tarefas progressivamente e mantém o catálogo anterior durante atualização', async () => {
+    const initialCatalog = Promise.withResolvers<GoogleTasksCatalogResult>();
+    const refreshedCatalog = Promise.withResolvers<GoogleTasksCatalogResult>();
+    const loadTasksCatalog = vi
+      .fn<PopupDependencies['loadTasksCatalog']>()
+      .mockImplementationOnce((_token, _signal, onProgress) => {
+        onProgress?.({
+          taskLists: [
+            taskList('loading', 'list-progress', 'Em andamento', [
+              taskItem('progress-task', 'Página disponível'),
+            ]),
+          ],
+        });
+        return initialCatalog.promise;
+      })
+      .mockImplementationOnce((_token, _signal, onProgress) => {
+        onProgress?.({
+          taskLists: [
+            taskList('loading', 'list-new', 'Não substituir', [
+              taskItem('new-task', 'Conteúdo intermediário'),
+            ]),
+          ],
+        });
+        return refreshedCatalog.promise;
+      });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      loadTasksCatalog,
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    const tasksRegion = await screen.findByRole('region', { name: 'Tarefas' });
+    expect(tasksRegion).toHaveAttribute('aria-busy', 'true');
+    expect(within(tasksRegion).getByText('Página disponível')).toBeVisible();
+    expect(within(tasksRegion).getByText(/outras listas ou páginas/i)).toBeVisible();
+
+    initialCatalog.resolve({
+      status: 'complete',
+      taskLists: [
+        taskList('complete', 'list-progress', 'Em andamento', [
+          taskItem('progress-task', 'Página disponível'),
+        ]),
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Atualizar tarefas' }));
+
+    expect(tasksRegion).toHaveAttribute('aria-busy', 'true');
+    expect(within(tasksRegion).getByText('Página disponível')).toBeVisible();
+    expect(within(tasksRegion).queryByText('Conteúdo intermediário')).not.toBeInTheDocument();
+
+    refreshedCatalog.resolve({ status: 'complete', taskLists: [] });
+    expect(await screen.findByText('Nenhuma tarefa disponível nas suas listas.')).toBeVisible();
+  });
+
+  it('prioriza grupos, datas e desempates e identifica lista e subtarefa', async () => {
+    const todayMs = new Date(2026, 7, 29, 12).getTime();
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      now: () => todayMs,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'first', 'Trabalho', [
+            taskItem('today-b', 'Mesmo título', { due: '2026-08-29', position: '0002' }),
+            taskItem('future', 'Futura', { due: '2026-08-30' }),
+            taskItem('overdue', 'Atrasada', { due: '2026-08-28' }),
+            taskItem('today-a', 'Mesmo título', {
+              due: '2026-08-29',
+              position: '0001',
+              parentId: 'parent',
+            }),
+          ]),
+          taskList('complete', 'second', '', [taskItem('undated', '')]),
+        ],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    const tasksRegion = await screen.findByRole('region', { name: 'Tarefas' });
+    const groupHeadings = within(tasksRegion).getAllByRole('heading', { level: 3 });
+    expect(groupHeadings.map(({ textContent }) => textContent)).toEqual([
+      'Vencidas',
+      'Hoje',
+      'Sem data',
+      'Futuras',
+    ]);
+    expect(within(tasksRegion).getByText('Vencida · 28/08')).toBeVisible();
+    expect(within(tasksRegion).getByText('Agendada · 30/08')).toBeVisible();
+    expect(within(tasksRegion).getAllByText('Mesmo título')).toHaveLength(2);
+    expect(within(tasksRegion).getByText('Subtarefa')).toBeVisible();
+    expect(within(tasksRegion).getAllByText('Trabalho')).toHaveLength(4);
+    expect(within(tasksRegion).getByText('Lista sem título')).toBeVisible();
+    expect(within(tasksRegion).getByText('Sem título')).toBeVisible();
+
+    const todayGroup = within(tasksRegion).getByRole('heading', { name: 'Hoje' }).parentElement;
+
+    if (!todayGroup) {
+      throw new Error('Expected the Today group to have a section element.');
+    }
+
+    const todayItems = within(todayGroup).getAllByRole('listitem');
+    expect(todayItems[0]).toHaveTextContent('Subtarefa');
+    expect(todayItems[1]).not.toHaveTextContent('Subtarefa');
+  });
+
+  it('mantém a sessão antes das tarefas e trata conteúdo remoto como texto', async () => {
+    const malicious = '<img src=x onerror=alert(1)>';
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'partial',
+        taskLists: [
+          taskList('incomplete', 'unsafe-list', '<script>lista</script>', [
+            taskItem('unsafe-task', malicious),
+          ]),
+        ],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    const session = screen.getByRole('region', { name: 'Sessão atual' });
+    const tasksRegion = await screen.findByRole('region', { name: 'Tarefas' });
+    expect(
+      session.compareDocumentPosition(tasksRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(tasksRegion).getByText(malicious)).toBeVisible();
+    expect(within(tasksRegion).getByText('<script>lista</script>')).toBeVisible();
+    expect(within(tasksRegion).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(tasksRegion).getByText('Incompleto')).toBeVisible();
+    expect(within(tasksRegion).queryByText('Tudo em dia')).not.toBeInTheDocument();
+  });
+
+  it('ignora progresso de uma operação substituída', async () => {
+    let oldProgress: GoogleTasksCatalogProgressListener | undefined;
+    const refresh = Promise.withResolvers<GoogleTasksCatalogResult>();
+    const loadTasksCatalog = vi
+      .fn<PopupDependencies['loadTasksCatalog']>()
+      .mockImplementationOnce((_token, _signal, onProgress) => {
+        oldProgress = onProgress;
+        return Promise.resolve({
+          status: 'complete',
+          taskLists: [
+            taskList('complete', 'current', 'Lista atual', [taskItem('current-task', 'Atual')]),
+          ],
+        });
+      })
+      .mockImplementationOnce(() => refresh.promise);
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      loadTasksCatalog,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Atualizar tarefas' }));
+
+    act(() => {
+      oldProgress?.({
+        taskLists: [
+          taskList('loading', 'stale', 'Obsoleta', [taskItem('stale-task', 'Não mostrar')]),
+        ],
+      });
+    });
+
+    expect(screen.getByText('Atual')).toBeVisible();
+    expect(screen.queryByText('Não mostrar')).not.toBeInTheDocument();
+    refresh.resolve({ status: 'complete', taskLists: [] });
+  });
+
+  it('recalcula o grupo quando o dia local muda', async () => {
+    vi.useFakeTimers();
+    let nowMs = new Date(2026, 7, 29, 23, 59, 59).getTime();
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      now: () => nowMs,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'dates', 'Datas', [
+            taskItem('tomorrow', 'Virada do dia', { due: '2026-08-30' }),
+          ]),
+        ],
+      }),
+    });
+
+    try {
+      render(<App dependencies={dependencies} />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('heading', { name: 'Futuras' })).toBeVisible();
+
+      nowMs += 2_000;
+      act(() => vi.advanceTimersByTime(1_000));
+
+      expect(screen.getByRole('heading', { name: 'Hoje' })).toBeVisible();
+      expect(screen.queryByRole('heading', { name: 'Futuras' })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function createDependencies(overrides: Partial<PopupDependencies> = {}): PopupDependencies {
@@ -352,6 +563,38 @@ function completeTaskList(): Extract<GoogleTaskListLoad, { readonly status: 'com
 
 function incompleteTaskList(): GoogleTaskListLoad {
   return { ...completeTaskList(), status: 'incomplete', reason: 'forbidden' };
+}
+
+function taskList(
+  status: 'complete' | 'incomplete' | 'loading',
+  id: string,
+  title: string,
+  tasks: readonly ReturnType<typeof taskItem>[],
+): GoogleTaskListLoad {
+  const common = { taskList: { id, title }, tasks };
+
+  if (status === 'incomplete') {
+    return { status, ...common, reason: 'forbidden' };
+  }
+
+  return status === 'complete' ? { status, ...common } : { status, ...common };
+}
+
+function taskItem(
+  id: string,
+  title: string,
+  overrides: Partial<ReturnType<typeof completeTaskList>['tasks'][number]> = {},
+) {
+  return {
+    id,
+    title,
+    position: id,
+    status: 'needsAction' as const,
+    deleted: false,
+    hidden: false,
+    assigned: false,
+    ...overrides,
+  };
 }
 
 function activeTimerState(): StoredTimerState {
