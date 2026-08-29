@@ -270,20 +270,30 @@ adaptador.
 
 ### 4.3 Cliente REST
 
-- [ ] Criar cliente REST direto para `https://tasks.googleapis.com/tasks/v1` usando o token OAuth.
-- [ ] Não adicionar API key, SDK remoto, cliente JavaScript remoto ou abstração para múltiplos provedores.
-- [ ] Centralizar operações concretas de listas, tarefas e conclusão fora do React.
-- [ ] Solicitar somente campos consumidos pelo produto e incluir `nextPageToken` nas respostas parciais.
-- [ ] Tratar respostas sem corpo esperado, payload inválido, HTTP não exitoso, rede, autorização e limite.
-- [ ] Sanitizar erros antes de entregá-los à interface ou aos logs.
-- [ ] Permitir cancelamento ou descarte seguro de resultados obsoletos do carregamento.
+- [x] Criar cliente REST direto para `https://tasks.googleapis.com/tasks/v1` usando o token OAuth.
+- [x] Não adicionar API key, SDK remoto, cliente JavaScript remoto ou abstração para múltiplos provedores.
+- [x] Centralizar operações concretas de listas, tarefas e conclusão fora do React.
+- [x] Solicitar somente campos consumidos pelo produto e incluir `nextPageToken` nas respostas parciais.
+- [x] Tratar respostas sem corpo esperado, payload inválido, HTTP não exitoso, rede, autorização e limite.
+- [x] Sanitizar erros antes de entregá-los à interface ou aos logs.
+- [x] Permitir cancelamento ou descarte seguro de resultados obsoletos do carregamento.
+
+Validação de 2026-08-29: cliente REST direto aprovado em 33 testes novos, dentro de 139 testes
+unitários totais. Foram comprovadas operações de uma página para listas e tarefas, filtros e campos
+parciais exatos, tokens de paginação, codificação de IDs, reconstrução de respostas, página vazia,
+payload inválido, mapeamento sanitizado de HTTP e rede e cancelamento por `AbortSignal`. O `PATCH`
+de conclusão envia somente `{ "status": "completed" }` e solicita `id`, `status` e `completed` na
+resposta, sem integrar ainda o fluxo local ou o popup. `pnpm check`, `pnpm test:e2e` (2 testes),
+`pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e `git diff --check` passaram.
+O manifesto permaneceu sem novos acessos, background ou content script, e os testes não usaram
+conta Google, Storage ou chamada remota real.
 
 ### 4.4 Listas e tarefas
 
 - [ ] Paginar `tasklists.list` até consumir todos os `nextPageToken`.
 - [ ] Paginar `tasks.list` de cada lista até consumir todos os `nextPageToken`.
-- [ ] Enviar explicitamente `showCompleted=false`, `showDeleted=false`, `showHidden=false` e `showAssigned=false`.
-- [ ] Ler os campos necessários para IDs, títulos, lista, data agendada, hierarquia, posição e estado.
+- [x] Enviar explicitamente `showCompleted=false`, `showDeleted=false`, `showHidden=false` e `showAssigned=false`.
+- [x] Ler os campos necessários para IDs, títulos, lista, data agendada, hierarquia, posição e estado.
 - [ ] Incluir subtarefas próprias como tarefas elegíveis independentes.
 - [ ] Excluir tarefas concluídas, excluídas, ocultas e atribuídas por Docs ou Chat Spaces.
 - [ ] Não aplicar limite arbitrário nem declarar resultado parcial como completo.
@@ -295,10 +305,10 @@ adaptador.
 - [ ] Testar autorização interativa somente depois da ação do usuário.
 - [x] Testar token inválido, remoção do cache e nova tentativa.
 - [ ] Testar paginação de listas e tarefas em uma e várias páginas.
-- [ ] Testar presença dos quatro filtros explícitos e dos campos parciais necessários.
+- [x] Testar presença dos quatro filtros explícitos e dos campos parciais necessários.
 - [ ] Testar lista vazia, subtarefa, tarefa atribuída, resposta inválida, falhas HTTP e rede.
 - [ ] Testar carregamento parcial sem apresentá-lo como completo.
-- [ ] Manter os testes comuns independentes de uma conta Google e de chamadas reais.
+- [x] Manter os testes comuns independentes de uma conta Google e de chamadas reais.
 
 ## 5. Popup e apresentação das tarefas
 
