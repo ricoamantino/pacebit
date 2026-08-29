@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Símbolo do Pacebit</title>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#2563eb" />
+  <path d="M38 94V35" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="10" />
+  <circle cx="68" cy="59" r="27" fill="none" stroke="#fff" stroke-width="10" />
+  <path d="M68 43V59L79 66" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="8" />
+</svg>

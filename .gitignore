@@ -1,0 +1,27 @@
+# Dependencies and generated output
+node_modules/
+.output/
+.wxt/
+coverage/
+
+# Browser testing and local tooling
+.playwright-cli/
+playwright-report/
+test-results/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs and packages
+*.log
+pnpm-debug.log*
+*.zip
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.sw?
