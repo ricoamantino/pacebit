@@ -85,12 +85,18 @@ produziu artefato, confirmando que uma etapa malsucedida impede o pacote final.
 
 ### 2.1 Modelo persistente
 
-- [ ] Definir tipos explícitos para sessão em execução, sessão pausada, período de execução e sessão concluída.
-- [ ] Representar ausência de sessão sem criar um quarto estado persistente artificial.
-- [ ] Modelar identificador único da sessão, IDs e snapshots mínimos de tarefa e lista.
-- [ ] Modelar início, fim, períodos efetivamente executados e duração total sem ambiguidade de fuso horário.
-- [ ] Garantir que o modelo permita reconstruir a duração sem contador em memória.
-- [ ] Manter os tipos de domínio independentes de React, Chrome e Google Tasks.
+- [x] Definir tipos explícitos para sessão em execução, sessão pausada, período de execução e sessão concluída.
+- [x] Representar ausência de sessão sem criar um quarto estado persistente artificial.
+- [x] Modelar identificador único da sessão, IDs e snapshots mínimos de tarefa e lista.
+- [x] Modelar início, fim, períodos efetivamente executados e duração total sem ambiguidade de fuso horário.
+- [x] Garantir que o modelo permita reconstruir a duração sem contador em memória.
+- [x] Manter os tipos de domínio independentes de React, Chrome e Google Tasks.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm build` e `git diff --check` concluídos. TypeScript
+confirmou a união discriminada dos estados ativos, períodos fechados não vazios para sessões
+pausadas e concluídas e a representação temporal em milissegundos Unix. Inspeção do módulo
+confirmou ausência de estado ocioso, contador em memória e dependências de React, Chrome, WXT ou
+Google Tasks.
 
 ### 2.2 Transições
 
