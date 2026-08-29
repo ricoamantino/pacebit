@@ -31,29 +31,31 @@ const pausedSession = {
   periods: [{ startedAtMs: 1_000, endedAtMs: 2_000 }],
 } as const;
 
+const resumedSession = {
+  ...pausedSession,
+  state: 'running',
+  runningSinceMs: 3_000,
+} as const;
+
 beforeEach(() => {
   fakeBrowser.reset();
 });
 
 describe('stored session operations', () => {
   it('persists start, pause, resume and finish before reporting each transition', async () => {
-    await expect(startStoredSession(startInput)).resolves.toEqual({
+    await expect(startStoredSession(null, startInput)).resolves.toEqual({
       status: 'applied',
       value: runningSession,
     });
 
-    await expect(pauseStoredSession(2_000)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'applied',
       value: pausedSession,
     });
 
-    await expect(resumeStoredSession(3_000)).resolves.toEqual({
+    await expect(resumeStoredSession(pausedSession, 3_000)).resolves.toEqual({
       status: 'applied',
-      value: {
-        ...pausedSession,
-        state: 'running',
-        runningSinceMs: 3_000,
-      },
+      value: resumedSession,
     });
 
     const originalRemove = fakeBrowser.storage.local.remove.bind(fakeBrowser.storage.local);
@@ -75,7 +77,7 @@ describe('stored session operations', () => {
         await originalRemove(keys);
       });
 
-    await expect(finishStoredSession(4_000)).resolves.toEqual({
+    await expect(finishStoredSession(resumedSession, 4_000)).resolves.toEqual({
       status: 'applied',
       value: {
         ...startInput,
@@ -120,7 +122,10 @@ describe('stored session operations', () => {
     await storage.setItem('local:session-history', existingHistory);
     const setSpy = vi.spyOn(fakeBrowser.storage.local, 'set');
 
-    await expect(cancelStoredSession()).resolves.toEqual({ status: 'applied', value: null });
+    await expect(cancelStoredSession(pausedSession)).resolves.toEqual({
+      status: 'applied',
+      value: null,
+    });
     expect(setSpy).not.toHaveBeenCalled();
     await expect(readActiveSession()).resolves.toEqual({ status: 'ready', value: null });
     await expect(readSessionHistory()).resolves.toEqual({
@@ -129,24 +134,23 @@ describe('stored session operations', () => {
     });
 
     const removeSpy = vi.spyOn(fakeBrowser.storage.local, 'remove');
-    await expect(cancelStoredSession()).resolves.toEqual({ status: 'unchanged', value: null });
+    await expect(cancelStoredSession(pausedSession)).resolves.toMatchObject({
+      status: 'conflict',
+      reason: 'stale-state',
+    });
     expect(removeSpy).not.toHaveBeenCalled();
   });
 
-  it('does not write rejected or already satisfied transitions', async () => {
+  it('does not write rejected or stale transitions', async () => {
     await storage.setItem('local:active-session', runningSession);
     const setSpy = vi.spyOn(fakeBrowser.storage.local, 'set');
     const removeSpy = vi.spyOn(fakeBrowser.storage.local, 'remove');
 
-    await expect(startStoredSession(startInput)).resolves.toEqual({
-      status: 'unchanged',
-      value: runningSession,
+    await expect(startStoredSession(null, startInput)).resolves.toMatchObject({
+      status: 'conflict',
+      reason: 'stale-state',
     });
-    await expect(resumeStoredSession(2_000)).resolves.toEqual({
-      status: 'unchanged',
-      value: runningSession,
-    });
-    await expect(pauseStoredSession(999)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 999)).resolves.toEqual({
       status: 'rejected',
       reason: 'timestamp-out-of-order',
     });
@@ -162,7 +166,7 @@ describe('stored session operations', () => {
       .mockImplementationOnce(() => write.promise);
     let settled = false;
 
-    const pendingResult = startStoredSession(startInput);
+    const pendingResult = startStoredSession(null, startInput);
     void pendingResult.then(() => {
       settled = true;
     });
@@ -179,7 +183,7 @@ describe('stored session operations', () => {
       new Error('controlled write failure'),
     );
 
-    await expect(startStoredSession(startInput)).resolves.toEqual({
+    await expect(startStoredSession(null, startInput)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -191,7 +195,7 @@ describe('stored session operations', () => {
       new Error('controlled read failure'),
     );
 
-    await expect(pauseStoredSession(2_000)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -203,7 +207,7 @@ describe('stored session operations', () => {
       new Error('controlled write failure'),
     );
 
-    await expect(pauseStoredSession(2_000)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -219,7 +223,7 @@ describe('stored session operations', () => {
       new Error('controlled write failure'),
     );
 
-    await expect(resumeStoredSession(3_000)).resolves.toEqual({
+    await expect(resumeStoredSession(pausedSession, 3_000)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -236,7 +240,7 @@ describe('stored session operations', () => {
       new Error('controlled remove failure'),
     );
 
-    await expect(cancelStoredSession()).resolves.toEqual({
+    await expect(cancelStoredSession(pausedSession)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -253,7 +257,7 @@ describe('stored session operations', () => {
       new Error('controlled history failure'),
     );
 
-    await expect(finishStoredSession(2_000)).resolves.toEqual({
+    await expect(finishStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -270,7 +274,7 @@ describe('stored session operations', () => {
       .spyOn(fakeBrowser.storage.local, 'remove')
       .mockRejectedValueOnce(new Error('controlled remove failure'));
 
-    await expect(finishStoredSession(2_000)).resolves.toEqual({
+    await expect(finishStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'storage-unavailable',
     });
@@ -292,7 +296,7 @@ describe('stored session operations', () => {
       ],
     });
 
-    await expect(finishStoredSession(5_000)).resolves.toEqual({
+    await expect(finishStoredSession(runningSession, -1)).resolves.toEqual({
       status: 'applied',
       value: firstHistory.status === 'ready' ? firstHistory.value[0] : undefined,
     });
@@ -318,7 +322,7 @@ describe('stored session operations', () => {
     const setSpy = vi.spyOn(fakeBrowser.storage.local, 'set');
     const removeSpy = vi.spyOn(fakeBrowser.storage.local, 'remove');
 
-    await expect(finishStoredSession(2_000)).resolves.toEqual({
+    await expect(finishStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'invalid-stored-data',
     });
@@ -336,7 +340,7 @@ describe('stored session operations', () => {
     quotaError.name = 'QuotaExceededError';
     vi.spyOn(fakeBrowser.storage.local, 'set').mockRejectedValueOnce(quotaError);
 
-    await expect(pauseStoredSession(2_000)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'quota-exceeded',
     });
@@ -352,7 +356,7 @@ describe('stored session operations', () => {
     const setSpy = vi.spyOn(fakeBrowser.storage.local, 'set');
     const removeSpy = vi.spyOn(fakeBrowser.storage.local, 'remove');
 
-    await expect(pauseStoredSession(2_000)).resolves.toEqual({
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toEqual({
       status: 'failed',
       reason: 'invalid-stored-data',
     });
@@ -364,15 +368,15 @@ describe('stored session operations', () => {
   });
 
   it('recovers state from local storage after recreating the module context', async () => {
-    await startStoredSession(startInput);
-    await finishStoredSession(2_000);
+    await startStoredSession(null, startInput);
+    await finishStoredSession(runningSession, 2_000);
     const secondInput = {
       id: 'session-2',
       task: { id: 'task-2', title: 'Revisar relatório' },
       taskList: startInput.taskList,
       startedAtMs: 3_000,
     } as const;
-    await startStoredSession(secondInput);
+    await startStoredSession(null, secondInput);
     vi.resetModules();
 
     const recreatedStorage = await import('../../src/storage/session-storage');
@@ -405,9 +409,15 @@ describe('stored session operations', () => {
       .spyOn(globalThis, 'fetch')
       .mockRejectedValue(new Error('controlled offline state'));
 
-    await expect(pauseStoredSession(2_000)).resolves.toMatchObject({ status: 'applied' });
-    await expect(resumeStoredSession(3_000)).resolves.toMatchObject({ status: 'applied' });
-    await expect(finishStoredSession(4_000)).resolves.toMatchObject({ status: 'applied' });
+    await expect(pauseStoredSession(runningSession, 2_000)).resolves.toMatchObject({
+      status: 'applied',
+    });
+    await expect(resumeStoredSession(pausedSession, 3_000)).resolves.toMatchObject({
+      status: 'applied',
+    });
+    await expect(finishStoredSession(resumedSession, 4_000)).resolves.toMatchObject({
+      status: 'applied',
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

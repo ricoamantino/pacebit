@@ -54,6 +54,15 @@ describe('transições do timer', () => {
     expect(startSession(current, startInput)).toEqual({ status: 'unchanged', value: current });
   });
 
+  it('rejeita a reutilização do ID com outro contexto', () => {
+    expect(
+      startSession(runningSession(), {
+        ...startInput,
+        task: { ...startInput.task, title: 'Outro título' },
+      }),
+    ).toEqual({ status: 'rejected', reason: 'session-id-conflict' });
+  });
+
   it('pausa fechando exatamente o período corrente sem alterar a entrada', () => {
     const current = runningSession({
       periods: [{ startedAtMs: 1_000, endedAtMs: 2_000 }],

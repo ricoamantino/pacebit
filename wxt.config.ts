@@ -36,6 +36,7 @@ export default defineConfig({
     return {
       name: 'Pacebit',
       description: 'Registre o tempo gasto em tarefas do Google Tasks.',
+      minimum_chrome_version: '106',
       action: {
         default_title: 'Pacebit',
       },

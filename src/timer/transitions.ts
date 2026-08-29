@@ -21,6 +21,7 @@ export interface StartSessionInput {
 export type TransitionRejection =
   | 'active-session-exists'
   | 'no-active-session'
+  | 'session-id-conflict'
   | 'invalid-timestamp'
   | 'timestamp-out-of-order';
 
@@ -38,7 +39,13 @@ export function startSession(
   }
 
   if (current) {
-    return current.id === input.id ? unchanged(current) : rejected('active-session-exists');
+    if (current.id !== input.id) {
+      return rejected('active-session-exists');
+    }
+
+    return hasSameStartContext(current, input)
+      ? unchanged(current)
+      : rejected('session-id-conflict');
   }
 
   return applied({
@@ -50,6 +57,16 @@ export function startSession(
     periods: [],
     runningSinceMs: input.startedAtMs,
   });
+}
+
+function hasSameStartContext(current: ActiveSession, input: StartSessionInput): boolean {
+  return (
+    current.startedAtMs === input.startedAtMs &&
+    current.task.id === input.task.id &&
+    current.task.title === input.task.title &&
+    current.taskList.id === input.taskList.id &&
+    current.taskList.title === input.taskList.title
+  );
 }
 
 export function pauseSession(

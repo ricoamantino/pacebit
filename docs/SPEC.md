@@ -186,14 +186,27 @@ continuam reservados à seção 8.2.
 
 ### 3.3 Coordenação entre instâncias
 
-- [ ] Fazer instâncias abertas observarem e convergirem para o estado persistido mais recente.
-- [ ] Associar cada comando à versão ou identidade do estado sobre o qual foi iniciado.
-- [ ] Rejeitar uma transição baseada em estado obsoleto e recarregar o estado atual.
-- [ ] Impedir que duas instâncias iniciem sessões diferentes simultaneamente.
-- [ ] Impedir que pausas ou retomadas concorrentes dupliquem ou percam períodos confirmados.
-- [ ] Impedir que finalizações concorrentes produzam dois registros históricos.
-- [ ] Avaliar primeiro coordenação por persistência e APIs nativas; adicionar mensageria ou escritor único apenas se necessário para preservar as invariantes.
-- [ ] Manter qualquer background introduzido reconstruível pela persistência e limitado à responsabilidade concreta que o exigir.
+- [x] Fazer instâncias abertas observarem e convergirem para o estado persistido mais recente.
+- [x] Associar cada comando à versão ou identidade do estado sobre o qual foi iniciado.
+- [x] Rejeitar uma transição baseada em estado obsoleto e recarregar o estado atual.
+- [x] Impedir que duas instâncias iniciem sessões diferentes simultaneamente.
+- [x] Impedir que pausas ou retomadas concorrentes dupliquem ou percam períodos confirmados.
+- [x] Impedir que finalizações concorrentes produzam dois registros históricos.
+- [x] Proteger uma finalização pendente de limpeza contra pausa, retomada ou cancelamento posterior.
+- [x] Rejeitar reutilização incompatível de ID ativo ou já presente no histórico.
+- [x] Avaliar primeiro coordenação por persistência e APIs nativas; adicionar mensageria ou escritor único apenas se necessário para preservar as invariantes.
+- [x] Manter qualquer background introduzido reconstruível pela persistência e limitado à responsabilidade concreta que o exigir.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm test:e2e`, `pnpm build`, `pnpm audit --prod` e
+`git diff --check` concluídos, com 17 novos testes unitários, 91 testes unitários totais e dois
+smokes aprovados no Chromium. Duas páginas reais da extensão confirmaram que Web Locks são
+compartilhados e exclusivos nessa origem, sem nova permissão ou background. Testes controlados do
+lock `pacebit:timer-storage` confirmaram um único vencedor em início, pausa, retomada, finalização e
+cancelamento concorrentes, conflitos com o estado atual, observadores convergentes sem estado
+intermediário e recuperação de finalização pendente. Colisões de ID e dados incompatíveis
+permaneceram preservados e bloqueados. O manifesto de produção manteve
+somente `identity`, `storage` e o host aprovado, e a auditoria de produção não encontrou
+vulnerabilidades.
 
 ### 3.4 Testes de persistência e concorrência
 
@@ -202,8 +215,8 @@ continuam reservados à seção 8.2.
 - [x] Testar dados ausentes, inválidos e incompatíveis.
 - [x] Testar falha em cada escrita relevante da finalização.
 - [x] Testar quota excedida sem perda silenciosa de estado.
-- [ ] Testar início, pausa, retomada, finalização e cancelamento a partir de duas instâncias.
-- [ ] Testar que exatamente um comando concorrente vence e o outro recebe conflito recuperável.
+- [x] Testar início, pausa, retomada, finalização e cancelamento a partir de duas instâncias.
+- [x] Testar que exatamente um comando concorrente vence e o outro recebe conflito recuperável.
 - [ ] Testar que nenhuma falha remota do Google altera dados locais válidos.
 
 ## 4. Google Cloud, OAuth e Tasks API
@@ -214,8 +227,8 @@ continuam reservados à seção 8.2.
 - [x] Habilitar a Google Tasks API no projeto.
 - [x] Definir um ID estável para a extensão distribuível.
 - [x] Criar credencial OAuth do tipo extensão Chrome vinculada ao ID estável.
-- [ ] Manter configurações de desenvolvimento e distribuição separadas quando necessário.
-- [ ] Configurar marca, audiência, tela de consentimento e scope usado pelo produto.
+- [x] Manter configurações de desenvolvimento e distribuição separadas quando necessário.
+- [x] Configurar marca, audiência, tela de consentimento e scope usado pelo produto.
 - [x] Confirmar que nenhum client secret, token ou credencial privada entra no repositório ou bundle.
 
 Validação de 2026-08-28: projeto Google Cloud e Google Tasks API habilitada confirmados pelo
@@ -224,16 +237,36 @@ fluxo do console. A chave pública do item deriva o ID estável
 real permanece no `.env.local` ignorado; `wxt prepare`, TypeScript e build MV3 foram aprovados, e
 repositório e bundle não contêm client secret, token, chave privada ou API key.
 
+Validação de 2026-08-29: a matriz de ambientes foi comprovada com client ID sintético e não
+funcional no `.env.test`, client ID real no `.env.local` ignorado e variável pública do GitHub
+Actions para o build distribuível. O `.env.example` documenta a separação sem incorporar o valor
+real. No Google Auth Platform, a marca `Pacebit` usa o ícone próprio, e-mails de suporte e contato
+do proprietário e nenhuma URL ou domínio provisório. A audiência foi confirmada como externa em
+modo de teste, com uma conta de teste cadastrada. O acesso contém exclusivamente
+`https://www.googleapis.com/auth/tasks`. O cliente é do tipo extensão Chrome e vincula o client ID
+real ao ID estável `jkpogflkipedlninnnplenlajoofkkfp`. Homepage, política de privacidade, publicação
+e verificação continuam reservadas à seção 9.
+
 ### 4.2 Autenticação
 
-- [ ] Encapsular `chrome.identity` fora dos componentes React.
-- [ ] Tentar obter token de forma não interativa depois de uma autorização prévia.
-- [ ] Iniciar o fluxo interativo somente após ação explícita e contextualizada do usuário.
-- [ ] Usar a conta Google associada ao perfil atual do Chrome sem criar seletor próprio.
-- [ ] Remover token inválido do cache da Identity API antes de solicitar renovação.
-- [ ] Não armazenar tokens em WXT Storage nem manter cache paralelo.
-- [ ] Tratar token ausente, autorização recusada, token expirado ou revogado e renovação necessária.
-- [ ] Expor à interface estados de autenticação pequenos e sanitizados, sem detalhes internos.
+- [x] Encapsular `chrome.identity` fora dos componentes React.
+- [x] Tentar obter token de forma não interativa depois de uma autorização prévia.
+- [x] Iniciar o fluxo interativo somente após ação explícita e contextualizada do usuário.
+- [x] Usar a conta Google associada ao perfil atual do Chrome sem criar seletor próprio.
+- [x] Remover token inválido do cache da Identity API antes de solicitar renovação.
+- [x] Não armazenar tokens em WXT Storage nem manter cache paralelo.
+- [x] Tratar token ausente, autorização recusada, token expirado ou revogado e renovação necessária.
+- [x] Expor à interface estados de autenticação pequenos e sanitizados, sem detalhes internos.
+
+Validação de 2026-08-29: adaptador isolado de `chrome.identity` aprovado em 15 testes novos, dentro
+de 106 testes unitários totais. Foram comprovados token silencioso, chamada interativa restrita à
+função explícita, scopes concedidos, remoção e renovação ordenadas, respostas ausentes, recusas e
+falhas sanitizadas, API indisponível e ausência de Storage, logs ou rede real. `pnpm check`,
+`pnpm test:e2e` (2 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e
+`git diff --check` passaram. O manifesto MV3 de produção exige Chrome 106, mantém o ID e client ID
+estáveis e contém somente `identity`, `storage`, o host da Tasks API e o scope aprovado, sem
+background ou content script. O gesto real do usuário será comprovado quando o popup integrar o
+adaptador.
 
 ### 4.3 Cliente REST
 
@@ -258,9 +291,9 @@ repositório e bundle não contêm client secret, token, chave privada ou API ke
 
 ### 4.5 Testes da integração controlada
 
-- [ ] Testar autenticação sem interação quando o token estiver disponível.
+- [x] Testar autenticação sem interação quando o token estiver disponível.
 - [ ] Testar autorização interativa somente depois da ação do usuário.
-- [ ] Testar token inválido, remoção do cache e nova tentativa.
+- [x] Testar token inválido, remoção do cache e nova tentativa.
 - [ ] Testar paginação de listas e tarefas em uma e várias páginas.
 - [ ] Testar presença dos quatro filtros explícitos e dos campos parciais necessários.
 - [ ] Testar lista vazia, subtarefa, tarefa atribuída, resposta inválida, falhas HTTP e rede.
