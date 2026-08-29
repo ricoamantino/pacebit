@@ -68,5 +68,6 @@ jobs:
           name: pacebit-chrome-mv3-${{ github.sha }}
           path: .output/pacebit-*-chrome.zip
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
           compression-level: 0
