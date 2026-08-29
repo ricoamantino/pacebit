@@ -100,14 +100,20 @@ Google Tasks.
 
 ### 2.2 Transições
 
-- [ ] Implementar a transição de iniciar somente quando não existir sessão ativa.
-- [ ] Implementar pausar acumulando exatamente o período em execução atual.
-- [ ] Implementar retomar criando exatamente um novo período em execução.
-- [ ] Implementar finalizar a partir dos estados em execução e pausado.
-- [ ] Implementar cancelar a partir dos estados em execução e pausado sem criar histórico.
-- [ ] Rejeitar transições inválidas com resultado explícito e sem corromper o estado.
-- [ ] Tornar ações repetidas e cliques rápidos idempotentes onde o comando representar a mesma intenção.
-- [ ] Preservar duração real, inclusive quando a sessão for muito curta.
+- [x] Implementar a transição de iniciar somente quando não existir sessão ativa.
+- [x] Implementar pausar acumulando exatamente o período em execução atual.
+- [x] Implementar retomar criando exatamente um novo período em execução.
+- [x] Implementar finalizar a partir dos estados em execução e pausado.
+- [x] Implementar cancelar a partir dos estados em execução e pausado sem criar histórico.
+- [x] Rejeitar transições inválidas com resultado explícito e sem corromper o estado.
+- [x] Tornar ações repetidas e cliques rápidos idempotentes onde o comando representar a mesma intenção.
+- [x] Preservar duração real, inclusive quando a sessão for muito curta.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm build` e `git diff --check` concluídos, com 17 testes
+das transições e 18 testes totais aprovados. Os cenários cobriram início, pausa, retomada,
+finalização, cancelamento, repetição, rejeições temporais, múltiplas pausas, duração zero e
+imutabilidade das entradas. Inspeção confirmou funções determinísticas sem relógio, persistência ou
+dependências de React, Chrome, WXT e Google Tasks.
 
 ### 2.3 Cálculos temporais
 
@@ -121,12 +127,12 @@ Google Tasks.
 
 ### 2.4 Testes do domínio
 
-- [ ] Testar todas as transições válidas da tabela do escopo.
-- [ ] Testar transições inválidas, ações repetidas e cliques rápidos.
-- [ ] Testar duração com nenhum, um e múltiplos intervalos de pausa.
-- [ ] Testar finalização em execução e em pausa.
-- [ ] Testar cancelamento com e sem tempo registrado.
-- [ ] Testar sessão de duração muito curta.
+- [x] Testar todas as transições válidas da tabela do escopo.
+- [x] Testar transições inválidas, ações repetidas e cliques rápidos.
+- [x] Testar duração com nenhum, um e múltiplos intervalos de pausa.
+- [x] Testar finalização em execução e em pausa.
+- [x] Testar cancelamento com e sem tempo registrado.
+- [x] Testar sessão de duração muito curta.
 - [ ] Testar períodos que começam ou terminam nos limites da meia-noite.
 - [ ] Testar total diário com sessão ativa, pausada e concluída.
 - [ ] Testar mudança de dia e mudança de fuso horário com relógio controlado.
