@@ -367,13 +367,23 @@ background ou content script.
 
 ### 5.3 Acessibilidade e comportamento
 
-- [ ] Usar regiões, títulos, listas, botões e formulários semanticamente adequados.
-- [ ] Associar rótulos acessíveis a todos os controles.
-- [ ] Garantir foco visível e ordem de teclado previsível.
-- [ ] Não depender somente de cor para comunicar prioridade, estado ou falha.
-- [ ] Desabilitar ações impossíveis com explicação curta.
+- [x] Usar regiões, títulos, listas, botões e formulários semanticamente adequados.
+- [x] Associar rótulos acessíveis a todos os controles.
+- [x] Garantir foco visível e ordem de teclado previsível.
+- [x] Não depender somente de cor para comunicar prioridade, estado ou falha.
+- [x] Desabilitar ações impossíveis com explicação curta.
 - [x] Manter títulos de tarefa e lista como texto não confiável, sem injeção de HTML.
-- [ ] Garantir comportamento seguro sob remontagem do React e efeitos repetidos em desenvolvimento.
+- [x] Garantir comportamento seguro sob remontagem do React e efeitos repetidos em desenvolvimento.
+
+Validação de 2026-08-29: semântica e comportamento acessível aprovados com um teste novo e testes
+existentes ampliados, dentro de 184 testes unitários totais. Regiões e cartões foram nomeados pelos
+próprios títulos, tarefas permaneceram em listas semânticas e os controles receberam nomes,
+descrições e estados ocupados observáveis. A interface continuou comunicando prioridade e falha
+por texto, sem depender de cor, e não introduziu formulário onde não existe entrada de dados. O
+smoke Playwright navegou por `Tab` até o único controle disponível e confirmou foco visível de
+3 px, nome e descrição acessíveis e ordem estrutural no Chromium. `pnpm check`,
+`pnpm test:e2e` (dois smokes), `pnpm build`, `pnpm audit --prod` e `git diff --check` passaram.
+O manifesto permaneceu sem novos acessos, background ou content script.
 
 ### 5.4 Testes do popup
 
@@ -381,7 +391,7 @@ background ou content script.
 - [x] Testar a prioridade completa e o desempate estável das tarefas.
 - [x] Testar listas com títulos iguais, subtarefas e carregamento de novas páginas.
 - [x] Testar que resultado parcial nunca é comunicado como completo.
-- [ ] Testar foco, nomes acessíveis, teclado e estados desabilitados dos controles críticos.
+- [x] Testar foco, nomes acessíveis, teclado e estados desabilitados dos controles críticos.
 - [x] Testar que dados remotos são renderizados como texto.
 
 ## 6. Execução, histórico e total diário

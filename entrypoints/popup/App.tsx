@@ -65,7 +65,7 @@ function GoogleStatus({
           </span>
         </div>
 
-        <div className="status-message" aria-live="polite" aria-atomic="true">
+        <div id="connection-status" className="status-message" role="status" aria-atomic="true">
           <p>{connectionMessage(state.status)}</p>
           {state.status === 'disconnected' ? (
             <p className="status-detail">
@@ -75,13 +75,24 @@ function GoogleStatus({
         </div>
 
         {state.status === 'disconnected' ? (
-          <button className="primary-button" type="button" onClick={onConnect}>
+          <button
+            className="primary-button"
+            type="button"
+            aria-describedby="connection-status"
+            onClick={onConnect}
+          >
             Conectar com Google
           </button>
         ) : null}
 
         {state.status === 'connecting' ? (
-          <button className="primary-button" type="button" disabled>
+          <button
+            className="primary-button"
+            type="button"
+            aria-busy="true"
+            aria-describedby="connection-status"
+            disabled
+          >
             Conectando…
           </button>
         ) : null}
@@ -97,7 +108,7 @@ function GoogleStatus({
           <span className={`status-label status-label--${content.tone}`}>{content.label}</span>
         </div>
 
-        <div className="status-message" aria-live="polite" aria-atomic="true">
+        <div id="tasks-status" className="status-message" role="status" aria-atomic="true">
           <p>{content.message}</p>
           {content.detail ? <p className="status-detail">{content.detail}</p> : null}
         </div>
@@ -105,19 +116,30 @@ function GoogleStatus({
         {prioritizedTasks.length > 0 ? <TaskGroups tasks={prioritizedTasks} /> : null}
 
         {state.status === 'loading' ? (
-          <p className="loading-detail" role="status">
+          <p id="tasks-loading-status" className="loading-detail" role="status">
             Outras listas ou páginas ainda estão sendo carregadas.
           </p>
         ) : null}
 
         {isRetryableState(state.status) ? (
-          <button className="secondary-button" type="button" onClick={onRetry}>
+          <button
+            className="secondary-button"
+            type="button"
+            aria-describedby="tasks-status"
+            onClick={onRetry}
+          >
             {state.status === 'ready' ? 'Atualizar tarefas' : 'Tentar novamente'}
           </button>
         ) : null}
 
         {state.status === 'loading' && taskCount > 0 ? (
-          <button className="secondary-button" type="button" disabled>
+          <button
+            className="secondary-button"
+            type="button"
+            aria-busy="true"
+            aria-describedby="tasks-status tasks-loading-status"
+            disabled
+          >
             Atualizando…
           </button>
         ) : null}
@@ -135,13 +157,13 @@ function CurrentSession({ state }: { readonly state: PopupLocalState }) {
       <div className="local-heading-row">
         <h2 id="session-overview-heading">Seu tempo</h2>
         {unavailable ? (
-          <p className="local-warning" role="status">
+          <p className="local-warning" role="status" aria-atomic="true">
             Não foi possível atualizar os dados locais.
           </p>
         ) : null}
       </div>
 
-      <SummaryCard title="Sessão atual">
+      <SummaryCard id="current-session-heading" title="Sessão atual">
         {state.status === 'loading' ? (
           <p>Carregando dados locais…</p>
         ) : summary?.activeSession ? (
@@ -168,12 +190,12 @@ function LocalTotals({ state }: { readonly state: PopupLocalState }) {
     <section className="local-overview" aria-labelledby="totals-heading">
       <h2 id="totals-heading">Resumo local</h2>
       <div className="summary-grid">
-        <SummaryCard title="Total de hoje">
+        <SummaryCard id="daily-total-heading" title="Total de hoje">
           <p className="summary-value">{summary ? formatDuration(summary.dailyTotalMs) : '—'}</p>
           <p className="summary-detail">Tempo efetivamente registrado.</p>
         </SummaryCard>
 
-        <SummaryCard title="Histórico">
+        <SummaryCard id="history-heading" title="Histórico">
           <p className="summary-value">{summary ? summary.historyCount : '—'}</p>
           <p className="summary-detail">
             {summary
@@ -247,15 +269,17 @@ function formatTaskDate(group: TaskPriorityGroup, date: CivilDate | undefined): 
 }
 
 function SummaryCard({
+  id,
   title,
   children,
 }: {
+  readonly id: string;
   readonly title: string;
   readonly children: ReactNode;
 }) {
   return (
-    <section className="card summary-card" aria-label={title}>
-      <h3>{title}</h3>
+    <section className="card summary-card" aria-labelledby={id}>
+      <h3 id={id}>{title}</h3>
       {children}
     </section>
   );

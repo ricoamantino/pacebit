@@ -29,11 +29,18 @@ describe('App', () => {
     const connect = await screen.findByRole('button', { name: 'Conectar com Google' });
     expect(dependencies.requestAuthorization).not.toHaveBeenCalled();
     expect(dependencies.getAuthorization).toHaveBeenCalledOnce();
+    expect(connect).toHaveAccessibleDescription(
+      /Conecte sua conta para acessar o Google Tasks.*O acesso é usado somente para ler tarefas/,
+    );
 
     fireEvent.click(connect);
 
     const connecting = await screen.findByRole('button', { name: 'Conectando…' });
     expect(connecting).toBeDisabled();
+    expect(connecting).toHaveAttribute('aria-busy', 'true');
+    expect(connecting).toHaveAccessibleDescription(
+      'Conclua a autorização do Google para continuar.',
+    );
     fireEvent.click(connecting);
     expect(dependencies.requestAuthorization).toHaveBeenCalledOnce();
 
@@ -359,6 +366,12 @@ describe('App', () => {
     expect(tasksRegion).toHaveAttribute('aria-busy', 'true');
     expect(within(tasksRegion).getByText('Página disponível')).toBeVisible();
     expect(within(tasksRegion).queryByText('Conteúdo intermediário')).not.toBeInTheDocument();
+    const updating = within(tasksRegion).getByRole('button', { name: 'Atualizando…' });
+    expect(updating).toBeDisabled();
+    expect(updating).toHaveAttribute('aria-busy', 'true');
+    expect(updating).toHaveAccessibleDescription(
+      /Atualizando suas tarefas.*Outras listas ou páginas ainda estão sendo carregadas/,
+    );
 
     refreshedCatalog.resolve({ status: 'complete', taskLists: [] });
     expect(await screen.findByText('Nenhuma tarefa disponível nas suas listas.')).toBeVisible();
@@ -443,6 +456,40 @@ describe('App', () => {
     expect(within(tasksRegion).queryByRole('img')).not.toBeInTheDocument();
     expect(within(tasksRegion).getByText('Incompleto')).toBeVisible();
     expect(within(tasksRegion).queryByText('Tudo em dia')).not.toBeInTheDocument();
+  });
+
+  it('expõe regiões, listas e controles com semântica e nomes acessíveis', async () => {
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      now: () => new Date(2026, 0, 2, 12).getTime(),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'accessible-list', 'Trabalho', [
+            taskItem('accessible-task', 'Preparar relatório', { due: '2026-01-01' }),
+          ]),
+        ],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    expect(screen.getByRole('main')).toBeVisible();
+    const regionNames = ['Sessão atual', 'Conexão Google', 'Tarefas', 'Total de hoje', 'Histórico'];
+
+    for (const name of regionNames) {
+      expect(await screen.findByRole('region', { name })).toBeVisible();
+    }
+
+    const tasksRegion = screen.getByRole('region', { name: 'Tarefas' });
+    expect(within(tasksRegion).getByRole('list')).toBeVisible();
+    expect(within(tasksRegion).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(tasksRegion).getByText('Vencida · 01/01')).toBeVisible();
+    const update = within(tasksRegion).getByRole('button', { name: 'Atualizar tarefas' });
+    expect(update).toHaveAccessibleDescription('1 tarefa disponível.');
+    expect(document.querySelector('form')).not.toBeInTheDocument();
+    expect(document.querySelector('[tabindex]')).not.toBeInTheDocument();
   });
 
   it('ignora progresso de uma operação substituída', async () => {
