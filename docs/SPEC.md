@@ -398,12 +398,24 @@ O manifesto permaneceu sem novos acessos, background ou content script.
 
 ### 6.1 Seleção e sessão ativa
 
-- [ ] Permitir seleção transitória somente de tarefa carregada pela API.
-- [ ] Iniciar a sessão persistindo imediatamente IDs e snapshots mínimos de tarefa e lista.
-- [ ] Impedir uma segunda sessão ativa e explicar como encerrar ou cancelar a atual.
-- [ ] Apresentar tarefa, lista, estado, duração atual e ação válida seguinte.
-- [ ] Atualizar a duração visual por relógio de interface sem transformar o contador em fonte de verdade.
-- [ ] Recalcular a duração ao abrir, reabrir ou voltar ao popup.
+- [x] Permitir seleção transitória somente de tarefa carregada pela API.
+- [x] Iniciar a sessão persistindo imediatamente IDs e snapshots mínimos de tarefa e lista.
+- [x] Impedir uma segunda sessão ativa e explicar como encerrar ou cancelar a atual.
+- [x] Apresentar tarefa, lista, estado, duração atual e ação válida seguinte.
+- [x] Atualizar a duração visual por relógio de interface sem transformar o contador em fonte de verdade.
+- [x] Recalcular a duração ao abrir, reabrir ou voltar ao popup.
+
+Validação de 2026-08-29: seleção e início aprovados em 12 testes novos, dentro de 196 testes
+unitários totais. O popup comprovou rádios nativos com seleção transitória por identidade, resolução
+do item atual, UUID e timestamp fornecidos pela borda e snapshots mínimos exatos. A interface só
+refletiu sucesso depois da escrita, bloqueou cliques concorrentes e segunda sessão ativa, convergiu
+em conflito e preservou retry após quota ou indisponibilidade. Uma tarefa removida durante escrita
+não alterou a sessão já enviada, e desmontar o popup não cancelou a persistência nem atualizou a
+árvore React encerrada. Sessões em execução e pausadas foram reconstruídas do armazenamento com
+tarefa, lista, estado, duração e próxima ação; o relógio visual recalculou a duração a cada segundo.
+`pnpm check`, `pnpm test:e2e` (2 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades
+conhecidas) e `git diff --check` passaram. O manifesto de produção manteve somente `identity`,
+`storage` e o host da Google Tasks API, sem background ou content script.
 
 ### 6.2 Controles
 
@@ -434,7 +446,7 @@ O manifesto permaneceu sem novos acessos, background ou content script.
 
 ### 6.5 Testes do fluxo local
 
-- [ ] Testar seleção, início e bloqueio de segunda sessão pela interface.
+- [x] Testar seleção, início e bloqueio de segunda sessão pela interface.
 - [ ] Testar pausa, retomada, finalização e cancelamento pela interface.
 - [ ] Testar recuperação visual de sessão em execução e pausada.
 - [ ] Testar histórico, snapshots e ordenação recente.

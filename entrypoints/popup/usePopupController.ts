@@ -15,6 +15,7 @@ import {
   observeStoredTimerState,
   type StoredTimerState,
   type StoredTimerStateObservation,
+  startStoredSession,
 } from '../../src/storage/session-storage';
 import { getLocalCivilDate } from '../../src/tasks/scheduled-date';
 import { type PrioritizedGoogleTask, prioritizeGoogleTasks } from '../../src/tasks/task-priority';
@@ -34,6 +35,8 @@ export interface PopupDependencies {
   readonly observeTimerState: (
     listener: (observation: StoredTimerStateObservation) => void,
   ) => () => void;
+  readonly startStoredSession: typeof startStoredSession;
+  readonly createSessionId: () => string;
   readonly now: () => TimestampMs;
 }
 
@@ -65,9 +68,24 @@ export interface PopupController {
   readonly local: PopupLocalState;
   readonly taskCount: number;
   readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
+  readonly sessionSelection: PopupSessionSelectionState;
   readonly connectGoogle: () => void;
   readonly retryGoogle: () => void;
+  readonly selectTask: (taskListId: string, taskId: string) => void;
+  readonly startSelectedSession: () => void;
 }
+
+export type PopupSessionSelectionState =
+  | { readonly status: 'blocked'; readonly reason: PopupSessionSelectionBlock }
+  | { readonly status: 'selecting'; readonly selectedTask: PrioritizedGoogleTask | null }
+  | { readonly status: 'starting'; readonly selectedTask: PrioritizedGoogleTask }
+  | {
+      readonly status: 'failed';
+      readonly reason: 'storage-full' | 'unavailable';
+      readonly selectedTask: PrioritizedGoogleTask;
+    };
+
+type PopupSessionSelectionBlock = 'local-loading' | 'local-unavailable' | 'active-session';
 
 const defaultDependencies: PopupDependencies = {
   getAuthorization: getGoogleAuthorization,
@@ -75,6 +93,8 @@ const defaultDependencies: PopupDependencies = {
   renewAuthorization: renewGoogleAuthorization,
   loadTasksCatalog: loadGoogleTasksCatalog,
   observeTimerState: observeStoredTimerState,
+  startStoredSession,
+  createSessionId: () => globalThis.crypto.randomUUID(),
   now: Date.now,
 };
 
@@ -84,6 +104,13 @@ interface ActiveOperation {
 }
 
 type AuthorizationMode = 'initial' | 'interactive' | 'retry';
+
+interface SelectedTaskKey {
+  readonly taskListId: string;
+  readonly taskId: string;
+}
+
+type SessionStartStatus = 'idle' | 'starting' | 'storage-full' | 'unavailable';
 
 export function usePopupController(
   dependencies: PopupDependencies = defaultDependencies,
@@ -95,9 +122,22 @@ export function usePopupController(
     | { readonly status: 'error'; readonly value?: StoredTimerState }
   >({ status: 'loading' });
   const [nowMs, setNowMs] = useState(dependencies.now);
+  const [selectedTaskKey, setSelectedTaskKey] = useState<SelectedTaskKey | null>(null);
+  const [startingTask, setStartingTask] = useState<PrioritizedGoogleTask | null>(null);
+  const [sessionStartStatus, setSessionStartStatus] = useState<SessionStartStatus>('idle');
   const googleRef = useRef(google);
   const nextOperationId = useRef(0);
   const activeOperation = useRef<ActiveOperation | null>(null);
+  const startInFlight = useRef(false);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const commitGoogleState = useCallback((state: PopupGoogleState) => {
     googleRef.current = state;
@@ -277,14 +317,183 @@ export function usePopupController(
       : { status: 'error', value: summary };
   }, [nowMs, storedTimerState]);
 
+  const prioritizedTasks = useMemo(
+    () => prioritizeGoogleTasks(google.taskLists, getLocalCivilDate(nowMs)),
+    [google.taskLists, nowMs],
+  );
+  const selectedTask = useMemo(
+    () => findSelectedTask(prioritizedTasks, selectedTaskKey),
+    [prioritizedTasks, selectedTaskKey],
+  );
+
+  useEffect(() => {
+    if (storedTimerState.status === 'ready' && storedTimerState.value.activeSession) {
+      setSelectedTaskKey(null);
+      setStartingTask(null);
+      setSessionStartStatus('idle');
+      return;
+    }
+
+    if (selectedTaskKey && !selectedTask && !startInFlight.current) {
+      setSelectedTaskKey(null);
+      setStartingTask(null);
+      setSessionStartStatus('idle');
+    }
+  }, [selectedTask, selectedTaskKey, storedTimerState]);
+
+  const selectTask = useCallback(
+    (taskListId: string, taskId: string) => {
+      if (
+        startInFlight.current ||
+        storedTimerState.status !== 'ready' ||
+        storedTimerState.value.activeSession ||
+        !findTask(prioritizedTasks, taskListId, taskId)
+      ) {
+        return;
+      }
+
+      setSelectedTaskKey({ taskListId, taskId });
+      setSessionStartStatus('idle');
+    },
+    [prioritizedTasks, storedTimerState],
+  );
+
+  const startSelectedSession = useCallback(async () => {
+    if (
+      startInFlight.current ||
+      !selectedTask ||
+      storedTimerState.status !== 'ready' ||
+      storedTimerState.value.activeSession
+    ) {
+      return;
+    }
+
+    startInFlight.current = true;
+    setStartingTask(selectedTask);
+    setSessionStartStatus('starting');
+
+    try {
+      const result = await dependencies.startStoredSession(null, {
+        id: dependencies.createSessionId(),
+        task: { id: selectedTask.task.id, title: selectedTask.task.title },
+        taskList: { id: selectedTask.taskList.id, title: selectedTask.taskList.title },
+        startedAtMs: dependencies.now(),
+      });
+
+      if (!mounted.current) {
+        return;
+      }
+
+      if (result.status === 'applied' || result.status === 'unchanged') {
+        setStoredTimerState((current) =>
+          current.status === 'loading' || !current.value
+            ? current
+            : {
+                status: 'ready',
+                value: { activeSession: result.value, history: current.value.history },
+              },
+        );
+        setSelectedTaskKey(null);
+        setStartingTask(null);
+        setSessionStartStatus('idle');
+        return;
+      }
+
+      if (result.status === 'conflict') {
+        setStoredTimerState({ status: 'ready', value: result.state });
+        setSelectedTaskKey(null);
+        setStartingTask(null);
+        setSessionStartStatus('idle');
+        return;
+      }
+
+      setStartingTask(null);
+      setSessionStartStatus(
+        result.status === 'failed' && result.reason === 'quota-exceeded'
+          ? 'storage-full'
+          : 'unavailable',
+      );
+    } catch {
+      if (mounted.current) {
+        setStartingTask(null);
+        setSessionStartStatus('unavailable');
+      }
+    } finally {
+      startInFlight.current = false;
+    }
+  }, [dependencies, selectedTask, storedTimerState]);
+
+  const sessionSelection = createSessionSelectionState(
+    storedTimerState,
+    sessionStartStatus === 'starting' ? (startingTask ?? selectedTask) : selectedTask,
+    sessionStartStatus,
+  );
+
   return {
     google,
     local,
     taskCount: countTasks(google.taskLists),
-    prioritizedTasks: prioritizeGoogleTasks(google.taskLists, getLocalCivilDate(nowMs)),
+    prioritizedTasks,
+    sessionSelection,
     connectGoogle: () => void authorizeAndLoad('interactive'),
     retryGoogle: () => void authorizeAndLoad('retry'),
+    selectTask,
+    startSelectedSession: () => void startSelectedSession(),
   };
+}
+
+function findSelectedTask(
+  tasks: readonly PrioritizedGoogleTask[],
+  key: SelectedTaskKey | null,
+): PrioritizedGoogleTask | null {
+  return key ? findTask(tasks, key.taskListId, key.taskId) : null;
+}
+
+function findTask(
+  tasks: readonly PrioritizedGoogleTask[],
+  taskListId: string,
+  taskId: string,
+): PrioritizedGoogleTask | null {
+  return tasks.find((item) => item.taskList.id === taskListId && item.task.id === taskId) ?? null;
+}
+
+function createSessionSelectionState(
+  storedState:
+    | { readonly status: 'loading' }
+    | { readonly status: 'ready'; readonly value: StoredTimerState }
+    | { readonly status: 'error'; readonly value?: StoredTimerState },
+  selectedTask: PrioritizedGoogleTask | null,
+  startStatus: SessionStartStatus,
+): PopupSessionSelectionState {
+  if (storedState.status === 'loading') {
+    return { status: 'blocked', reason: 'local-loading' };
+  }
+
+  if (storedState.status === 'error') {
+    return { status: 'blocked', reason: 'local-unavailable' };
+  }
+
+  if (storedState.value.activeSession) {
+    return { status: 'blocked', reason: 'active-session' };
+  }
+
+  if (!selectedTask) {
+    return { status: 'selecting', selectedTask: null };
+  }
+
+  if (startStatus === 'starting') {
+    return { status: 'starting', selectedTask };
+  }
+
+  if (startStatus === 'storage-full' || startStatus === 'unavailable') {
+    return {
+      status: 'failed',
+      reason: startStatus,
+      selectedTask,
+    };
+  }
+
+  return { status: 'selecting', selectedTask };
 }
 
 function createProgressListener(

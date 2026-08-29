@@ -5,6 +5,7 @@ import {
   type PopupDependencies,
   type PopupGoogleState,
   type PopupLocalState,
+  type PopupSessionSelectionState,
   usePopupController,
 } from './usePopupController';
 
@@ -30,8 +31,11 @@ export function App({ dependencies }: AppProps) {
         state={controller.google}
         taskCount={controller.taskCount}
         prioritizedTasks={controller.prioritizedTasks}
+        sessionSelection={controller.sessionSelection}
         onConnect={controller.connectGoogle}
         onRetry={controller.retryGoogle}
+        onSelectTask={controller.selectTask}
+        onStartSession={controller.startSelectedSession}
       />
       <LocalTotals state={controller.local} />
     </main>
@@ -42,16 +46,22 @@ interface GoogleStatusProps {
   readonly state: PopupGoogleState;
   readonly taskCount: number;
   readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
+  readonly sessionSelection: PopupSessionSelectionState;
   readonly onConnect: () => void;
   readonly onRetry: () => void;
+  readonly onSelectTask: (taskListId: string, taskId: string) => void;
+  readonly onStartSession: () => void;
 }
 
 function GoogleStatus({
   state,
   taskCount,
   prioritizedTasks,
+  sessionSelection,
   onConnect,
   onRetry,
+  onSelectTask,
+  onStartSession,
 }: GoogleStatusProps) {
   const content = getGoogleStatusContent(state, taskCount);
 
@@ -113,7 +123,26 @@ function GoogleStatus({
           {content.detail ? <p className="status-detail">{content.detail}</p> : null}
         </div>
 
-        {prioritizedTasks.length > 0 ? <TaskGroups tasks={prioritizedTasks} /> : null}
+        {prioritizedTasks.length > 0 ? (
+          <fieldset
+            className="task-selection"
+            aria-describedby="session-selection-status"
+            disabled={
+              sessionSelection.status === 'blocked' || sessionSelection.status === 'starting'
+            }
+          >
+            <legend className="visually-hidden">Escolha uma tarefa</legend>
+            <TaskGroups
+              tasks={prioritizedTasks}
+              selectedTask={getSelectedTask(sessionSelection)}
+              onSelectTask={onSelectTask}
+            />
+          </fieldset>
+        ) : null}
+
+        {prioritizedTasks.length > 0 ? (
+          <SessionSelection state={sessionSelection} onStartSession={onStartSession} />
+        ) : null}
 
         {state.status === 'loading' ? (
           <p id="tasks-loading-status" className="loading-detail" role="status">
@@ -174,6 +203,9 @@ function CurrentSession({ state }: { readonly state: PopupLocalState }) {
               {summary.activeSession.taskList.title || 'Lista sem título'} ·{' '}
               {summary.activeSession.state === 'running' ? 'Em execução' : 'Pausada'}
             </p>
+            <p className="summary-next-action">
+              Próxima ação: {summary.activeSession.state === 'running' ? 'Pausar' : 'Retomar'}.
+            </p>
           </>
         ) : (
           <p>{unavailable ? 'Dados locais indisponíveis.' : 'Nenhuma sessão em andamento.'}</p>
@@ -217,7 +249,15 @@ const taskGroups: readonly { readonly id: TaskPriorityGroup; readonly title: str
   { id: 'future', title: 'Futuras' },
 ];
 
-function TaskGroups({ tasks }: { readonly tasks: readonly PrioritizedGoogleTask[] }) {
+function TaskGroups({
+  tasks,
+  selectedTask,
+  onSelectTask,
+}: {
+  readonly tasks: readonly PrioritizedGoogleTask[];
+  readonly selectedTask: PrioritizedGoogleTask | null;
+  readonly onSelectTask: (taskListId: string, taskId: string) => void;
+}) {
   return (
     <div className="task-groups">
       {taskGroups.map((group) => {
@@ -228,7 +268,12 @@ function TaskGroups({ tasks }: { readonly tasks: readonly PrioritizedGoogleTask[
             <h3 id={`task-group-${group.id}`}>{group.title}</h3>
             <ul className="task-list">
               {groupTasks.map((item) => (
-                <TaskItem item={item} key={`${item.taskList.id}:${item.task.id}`} />
+                <TaskItem
+                  item={item}
+                  selected={haveSameTask(item, selectedTask)}
+                  onSelect={onSelectTask}
+                  key={`${item.taskList.id}:${item.task.id}`}
+                />
               ))}
             </ul>
           </section>
@@ -238,19 +283,134 @@ function TaskGroups({ tasks }: { readonly tasks: readonly PrioritizedGoogleTask[
   );
 }
 
-function TaskItem({ item }: { readonly item: PrioritizedGoogleTask }) {
+function TaskItem({
+  item,
+  selected,
+  onSelect,
+}: {
+  readonly item: PrioritizedGoogleTask;
+  readonly selected: boolean;
+  readonly onSelect: (taskListId: string, taskId: string) => void;
+}) {
   return (
-    <li className="task-item">
-      <p className="task-title">{item.task.title || 'Sem título'}</p>
-      <p className="task-context">
-        <span>{item.taskList.title || 'Lista sem título'}</span>
-        {item.task.parentId ? <span className="task-kind">Subtarefa</span> : null}
-      </p>
-      <p className={`task-date task-date--${item.group}`}>
-        {formatTaskDate(item.group, item.scheduledDate)}
-      </p>
+    <li className={`task-item${selected ? ' task-item--selected' : ''}`}>
+      <label className="task-option">
+        <input
+          className="task-option-input"
+          type="radio"
+          name="pacebit-task"
+          checked={selected}
+          onChange={() => onSelect(item.taskList.id, item.task.id)}
+        />
+        <span className="task-option-content">
+          <span className="task-title">{item.task.title || 'Sem título'}</span>
+          <span className="task-context">
+            <span>{item.taskList.title || 'Lista sem título'}</span>
+            {item.task.parentId ? <span className="task-kind">Subtarefa</span> : null}
+          </span>
+          <span className={`task-date task-date--${item.group}`}>
+            {formatTaskDate(item.group, item.scheduledDate)}
+          </span>
+        </span>
+      </label>
     </li>
   );
+}
+
+function SessionSelection({
+  state,
+  onStartSession,
+}: {
+  readonly state: PopupSessionSelectionState;
+  readonly onStartSession: () => void;
+}) {
+  const selectedTask = getSelectedTask(state);
+
+  return (
+    <section className="session-selection" aria-labelledby="session-selection-heading">
+      <h3 id="session-selection-heading">Início da sessão</h3>
+      <div id="session-selection-status" className="selection-status" role="status" aria-atomic>
+        <p>{selectionMessage(state)}</p>
+        {selectedTask ? (
+          <p className="selection-detail">
+            <strong>{selectedTask.task.title || 'Sem título'}</strong>
+            <span>{selectedTask.taskList.title || 'Lista sem título'}</span>
+          </p>
+        ) : null}
+      </div>
+
+      {state.status === 'selecting' && state.selectedTask ? (
+        <button
+          className="primary-button"
+          type="button"
+          aria-describedby="session-selection-status"
+          onClick={onStartSession}
+        >
+          Iniciar sessão
+        </button>
+      ) : null}
+
+      {state.status === 'failed' ? (
+        <button
+          className="primary-button"
+          type="button"
+          aria-describedby="session-selection-status"
+          onClick={onStartSession}
+        >
+          Tentar iniciar novamente
+        </button>
+      ) : null}
+
+      {state.status === 'starting' ? (
+        <button
+          className="primary-button"
+          type="button"
+          aria-busy="true"
+          aria-describedby="session-selection-status"
+          disabled
+        >
+          Iniciando…
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function getSelectedTask(state: PopupSessionSelectionState): PrioritizedGoogleTask | null {
+  return state.status === 'selecting' || state.status === 'starting' || state.status === 'failed'
+    ? state.selectedTask
+    : null;
+}
+
+function selectionMessage(state: PopupSessionSelectionState): string {
+  if (state.status === 'blocked') {
+    switch (state.reason) {
+      case 'local-loading':
+        return 'Aguarde a recuperação dos dados locais para selecionar uma tarefa.';
+      case 'local-unavailable':
+        return 'Não foi possível confirmar os dados locais. Tente reabrir o popup.';
+      case 'active-session':
+        return 'Finalize ou cancele a sessão atual antes de iniciar outra.';
+    }
+  }
+
+  if (state.status === 'starting') {
+    return 'Salvando a sessão no armazenamento local…';
+  }
+
+  if (state.status === 'failed') {
+    return state.reason === 'storage-full'
+      ? 'O armazenamento local está sem espaço. Libere espaço e tente novamente.'
+      : 'Não foi possível salvar a sessão. Tente novamente.';
+  }
+
+  return state.selectedTask
+    ? 'Tarefa selecionada. Confirme para iniciar o timer.'
+    : 'Selecione uma tarefa para iniciar o timer.';
+}
+
+function haveSameTask(left: PrioritizedGoogleTask, right: PrioritizedGoogleTask | null): boolean {
+  return left.task.id === right?.task.id && left.taskList.id === right.taskList.id;
 }
 
 function formatTaskDate(group: TaskPriorityGroup, date: CivilDate | undefined): string {

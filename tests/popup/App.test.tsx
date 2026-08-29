@@ -352,6 +352,7 @@ describe('App', () => {
     expect(tasksRegion).toHaveAttribute('aria-busy', 'true');
     expect(within(tasksRegion).getByText('Página disponível')).toBeVisible();
     expect(within(tasksRegion).getByText(/outras listas ou páginas/i)).toBeVisible();
+    expect(within(tasksRegion).getByRole('radio', { name: /Página disponível/ })).toBeEnabled();
 
     initialCatalog.resolve({
       status: 'complete',
@@ -403,7 +404,8 @@ describe('App', () => {
     render(<App dependencies={dependencies} />);
 
     const tasksRegion = await screen.findByRole('region', { name: 'Tarefas' });
-    const groupHeadings = within(tasksRegion).getAllByRole('heading', { level: 3 });
+    const taskChoices = within(tasksRegion).getByRole('group', { name: 'Escolha uma tarefa' });
+    const groupHeadings = within(taskChoices).getAllByRole('heading', { level: 3 });
     expect(groupHeadings.map(({ textContent }) => textContent)).toEqual([
       'Vencidas',
       'Hoje',
@@ -492,6 +494,309 @@ describe('App', () => {
     expect(document.querySelector('[tabindex]')).not.toBeInTheDocument();
   });
 
+  it('seleciona uma tarefa por vez e persiste snapshots mínimos somente após confirmação', async () => {
+    const startStoredSession = vi.fn<PopupDependencies['startStoredSession']>(
+      async (_expected, input) => appliedStart(input),
+    );
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      createSessionId: () => 'session-from-uuid',
+      now: () => 42_000,
+      startStoredSession,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'list-selection', 'Trabalho', [
+            taskItem('task-first', 'Primeira tarefa', { position: '0001' }),
+            taskItem('task-second', 'Segunda tarefa', { position: '0002' }),
+          ]),
+        ],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    const first = await screen.findByRole('radio', { name: /Primeira tarefa.*Trabalho.*Sem data/ });
+    const second = screen.getByRole('radio', { name: /Segunda tarefa.*Trabalho.*Sem data/ });
+    expect(screen.getByRole('group', { name: 'Escolha uma tarefa' })).toBeVisible();
+    expect(startStoredSession).not.toHaveBeenCalled();
+
+    fireEvent.click(first);
+    expect(first).toBeChecked();
+    expect(second).not.toBeChecked();
+    expect(startStoredSession).not.toHaveBeenCalled();
+
+    fireEvent.click(second);
+    expect(first).not.toBeChecked();
+    expect(second).toBeChecked();
+    second.focus();
+    expect(second).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+
+    expect(await screen.findByText('Próxima ação: Pausar.')).toBeVisible();
+    expect(startStoredSession).toHaveBeenCalledOnce();
+    expect(startStoredSession).toHaveBeenCalledWith(null, {
+      id: 'session-from-uuid',
+      task: { id: 'task-second', title: 'Segunda tarefa' },
+      taskList: { id: 'list-selection', title: 'Trabalho' },
+      startedAtMs: 42_000,
+    });
+    expect(
+      screen.getByText('Finalize ou cancele a sessão atual antes de iniciar outra.'),
+    ).toBeVisible();
+    expect(second).toBeDisabled();
+  });
+
+  it('bloqueia cliques repetidos e não atualiza a árvore desmontada depois da escrita', async () => {
+    const pendingStart =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['startStoredSession']>>>();
+    const startStoredSession = vi.fn<PopupDependencies['startStoredSession']>(
+      () => pendingStart.promise,
+    );
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      startStoredSession,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+    });
+    const view = render(<App dependencies={dependencies} />);
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Preparar relatório/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+
+    const starting = await screen.findByRole('button', { name: 'Iniciando…' });
+    expect(starting).toBeDisabled();
+    expect(starting).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(starting);
+    expect(startStoredSession).toHaveBeenCalledOnce();
+
+    view.unmount();
+    const input = startStoredSession.mock.calls[0]?.[1];
+
+    if (!input) {
+      throw new Error('Expected a pending start input.');
+    }
+
+    pendingStart.resolve(appliedStart(input));
+    await act(async () => Promise.resolve());
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it('mantém a gravação em andamento quando a tarefa selecionada sai do catálogo', async () => {
+    const pendingStart =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['startStoredSession']>>>();
+    const startStoredSession = vi.fn<PopupDependencies['startStoredSession']>(
+      () => pendingStart.promise,
+    );
+    const loadTasksCatalog = vi
+      .fn<PopupDependencies['loadTasksCatalog']>()
+      .mockResolvedValueOnce({ status: 'complete', taskLists: [completeTaskList()] })
+      .mockResolvedValueOnce({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'list-2', 'Pessoal', [taskItem('task-2', 'Outra tarefa')]),
+        ],
+      });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      startStoredSession,
+      loadTasksCatalog,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(await screen.findByRole('radio', { name: /Preparar relatório/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar tarefas' }));
+
+    expect(await screen.findByRole('radio', { name: /Outra tarefa/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Iniciando…' })).toBeDisabled();
+    expect(startStoredSession).toHaveBeenCalledOnce();
+
+    pendingStart.resolve({ status: 'failed', reason: 'storage-unavailable' });
+
+    expect(await screen.findByText('Selecione uma tarefa para iniciar o timer.')).toBeVisible();
+    expect(screen.getByRole('radio', { name: /Outra tarefa/ })).not.toBeChecked();
+  });
+
+  it('preserva a seleção e permite retry depois de falha de quota', async () => {
+    const startStoredSession = vi
+      .fn<PopupDependencies['startStoredSession']>()
+      .mockResolvedValueOnce({ status: 'failed', reason: 'quota-exceeded' })
+      .mockImplementationOnce(async (_expected, input) => appliedStart(input));
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      startStoredSession,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+    const task = await screen.findByRole('radio', { name: /Preparar relatório/ });
+    fireEvent.click(task);
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+
+    expect(
+      await screen.findByText(
+        'O armazenamento local está sem espaço. Libere espaço e tente novamente.',
+      ),
+    ).toBeVisible();
+    expect(task).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar iniciar novamente' }));
+
+    expect(await screen.findByText('Próxima ação: Pausar.')).toBeVisible();
+    expect(startStoredSession).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [{ status: 'failed', reason: 'storage-unavailable' } as const],
+    [{ status: 'rejected', reason: 'session-id-conflict' } as const],
+  ])('sanitiza uma falha de início recuperável', async (result) => {
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      startStoredSession: vi.fn().mockResolvedValue(result),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(await screen.findByRole('radio', { name: /Preparar relatório/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+
+    expect(
+      await screen.findByText('Não foi possível salvar a sessão. Tente novamente.'),
+    ).toBeVisible();
+    expect(document.body).not.toHaveTextContent(result.reason);
+  });
+
+  it('converge para a sessão concorrente retornada pela persistência', async () => {
+    const concurrentState = activeTimerState();
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      startStoredSession: vi.fn().mockResolvedValue({
+        status: 'conflict',
+        reason: 'stale-state',
+        state: concurrentState,
+      }),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(await screen.findByRole('radio', { name: /Preparar relatório/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sessão' }));
+
+    expect(
+      await screen.findByText('Finalize ou cancele a sessão atual antes de iniciar outra.'),
+    ).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent(
+      'Preparar relatório',
+    );
+    expect(document.body).not.toHaveTextContent('stale-state');
+  });
+
+  it('preserva a seleção por identidade e a remove quando a tarefa deixa o catálogo', async () => {
+    const selected = taskItem('selected-task', 'Selecionada', { position: '0002' });
+    const other = taskItem('other-task', 'Outra', { position: '0001' });
+    const loadTasksCatalog = vi
+      .fn<PopupDependencies['loadTasksCatalog']>()
+      .mockResolvedValueOnce({
+        status: 'complete',
+        taskLists: [taskList('complete', 'stable-list', 'Trabalho', [other, selected])],
+      })
+      .mockResolvedValueOnce({
+        status: 'complete',
+        taskLists: [taskList('complete', 'stable-list', 'Trabalho', [selected, other])],
+      })
+      .mockResolvedValueOnce({
+        status: 'complete',
+        taskLists: [taskList('complete', 'stable-list', 'Trabalho', [other])],
+      });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      loadTasksCatalog,
+    });
+
+    render(<App dependencies={dependencies} />);
+    const selectedRadio = await screen.findByRole('radio', { name: /Selecionada/ });
+    fireEvent.click(selectedRadio);
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar tarefas' }));
+
+    await screen.findByRole('button', { name: 'Atualizar tarefas' });
+    expect(await screen.findByRole('radio', { name: /Selecionada/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar tarefas' }));
+
+    expect(await screen.findByText('Selecione uma tarefa para iniciar o timer.')).toBeVisible();
+    expect(screen.queryByRole('radio', { name: /Selecionada/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Iniciar sessão' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'carregando',
+      () => () => {},
+      'Aguarde a recuperação dos dados locais para selecionar uma tarefa.',
+    ],
+    [
+      'indisponível',
+      (listener: (observation: StoredTimerStateObservation) => void) => {
+        listener({ status: 'failed', reason: 'storage-unavailable' });
+        return () => {};
+      },
+      'Não foi possível confirmar os dados locais. Tente reabrir o popup.',
+    ],
+  ])('bloqueia seleção enquanto o armazenamento está %s', async (_name, observe, message) => {
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      observeTimerState: observe,
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    const radio = await screen.findByRole('radio', { name: /Preparar relatório/ });
+    expect(radio).toBeDisabled();
+    expect(screen.getByText(message)).toBeVisible();
+    fireEvent.click(radio);
+    expect(screen.queryByRole('button', { name: 'Iniciar sessão' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['running', activeTimerState(), 'Próxima ação: Pausar.', '00:00:05'],
+    ['paused', pausedTimerState(), 'Próxima ação: Retomar.', '00:00:02'],
+  ])(
+    'recupera visualmente uma sessão %s e bloqueia outra seleção',
+    async (_state, timer, action, duration) => {
+      const dependencies = createDependencies({
+        getAuthorization: authorized('token'),
+        observeTimerState: observeReadyTimerState(timer),
+        loadTasksCatalog: vi.fn().mockResolvedValue({
+          status: 'complete',
+          taskLists: [completeTaskList()],
+        }),
+      });
+
+      render(<App dependencies={dependencies} />);
+
+      expect(await screen.findByText(action)).toBeVisible();
+      expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent(duration);
+      expect(screen.getByRole('radio', { name: /Preparar relatório/ })).toBeDisabled();
+      expect(
+        screen.getByText('Finalize ou cancele a sessão atual antes de iniciar outra.'),
+      ).toBeVisible();
+    },
+  );
+
   it('ignora progresso de uma operação substituída', async () => {
     let oldProgress: GoogleTasksCatalogProgressListener | undefined;
     const refresh = Promise.withResolvers<GoogleTasksCatalogResult>();
@@ -570,6 +875,18 @@ function createDependencies(overrides: Partial<PopupDependencies> = {}): PopupDe
     renewAuthorization: vi.fn().mockResolvedValue({ status: 'authorization-required' }),
     loadTasksCatalog: vi.fn().mockResolvedValue({ status: 'complete', taskLists: [] }),
     observeTimerState: observeReadyTimerState(EMPTY_TIMER_STATE),
+    startStoredSession: vi.fn<PopupDependencies['startStoredSession']>((_expected, input) =>
+      Promise.resolve({
+        status: 'applied',
+        value: {
+          ...input,
+          state: 'running',
+          periods: [],
+          runningSinceMs: input.startedAtMs,
+        },
+      }),
+    ),
+    createSessionId: () => 'controlled-session-id',
     now: () => NOW_MS,
     ...overrides,
   };
@@ -666,5 +983,31 @@ function activeTimerState(): StoredTimerState {
         durationMs: 2_000,
       },
     ],
+  };
+}
+
+function pausedTimerState(): StoredTimerState {
+  return {
+    activeSession: {
+      id: 'paused-session',
+      state: 'paused',
+      task: { id: 'task-1', title: 'Preparar relatório' },
+      taskList: { id: 'list-1', title: 'Trabalho' },
+      startedAtMs: 5_000,
+      periods: [{ startedAtMs: 5_000, endedAtMs: 7_000 }],
+    },
+    history: activeTimerState().history,
+  };
+}
+
+function appliedStart(input: Parameters<PopupDependencies['startStoredSession']>[1]) {
+  return {
+    status: 'applied' as const,
+    value: {
+      ...input,
+      state: 'running' as const,
+      periods: [],
+      runningSinceMs: input.startedAtMs,
+    },
   };
 }

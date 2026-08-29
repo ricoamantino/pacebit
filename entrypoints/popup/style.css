@@ -68,8 +68,10 @@ h1 {
 .status-detail,
 .loading-detail,
 .summary-detail,
+.summary-next-action,
 .summary-card > p:not(.summary-value),
 .local-warning,
+.selection-detail,
 .task-context,
 .task-date {
   color: var(--muted);
@@ -161,6 +163,25 @@ h3 {
   gap: 14px;
 }
 
+.task-selection {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .task-list {
   display: grid;
   gap: 8px;
@@ -170,12 +191,44 @@ h3 {
 }
 
 .task-item {
-  display: grid;
-  gap: 4px;
-  padding: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: #fbfcfe;
+}
+
+.task-item--selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.task-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.task-selection:disabled .task-option {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.task-option-input {
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+.task-option-input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.task-option-content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .task-title {
@@ -212,6 +265,34 @@ h3 {
 
 .task-date--today {
   color: var(--positive);
+}
+
+.session-selection {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 9px;
+  background: #eef3fb;
+}
+
+.selection-status,
+.selection-detail {
+  display: grid;
+  gap: 3px;
+}
+
+.selection-status {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.selection-detail strong {
+  overflow-wrap: anywhere;
+  color: #172033;
+}
+
+.summary-next-action {
+  font-weight: 650;
 }
 
 .primary-button,
