@@ -68,19 +68,18 @@ corrigida em `image-size`, dependência exclusiva da ferramenta de desenvolvimen
 
 ### 1.4 Integração contínua
 
-- [ ] Criar workflow do GitHub Actions com pnpm e cache apropriado.
-- [ ] Instalar dependências com lockfile imutável no CI.
-- [ ] Executar `pnpm check` no CI.
-- [ ] Executar `pnpm build` no CI.
-- [ ] Gerar ou preservar o pacote instalável como artefato do workflow.
-- [ ] Confirmar que falhas de validação impedem a produção do artefato final.
+- [x] Criar workflow do GitHub Actions com pnpm e cache apropriado.
+- [x] Instalar dependências com lockfile imutável no CI.
+- [x] Executar `pnpm check` no CI.
+- [x] Executar `pnpm build` no CI.
+- [x] Gerar ou preservar o pacote instalável como artefato do workflow.
+- [x] Confirmar que falhas de validação impedem a produção do artefato final.
 
-Validação local de 2026-08-29: variável pública do client ID configurada no GitHub, actions
-fixadas por SHA conferidas contra suas tags e workflow revisado sem secrets, `pull_request_target`
-ou permissões de escrita. `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm build`, `pnpm zip`
-e `git diff --check` concluídos. O ZIP contém somente os dez arquivos de runtime esperados e o
-manifesto MV3 preserva exatamente os acessos aprovados. Os itens permanecem abertos até uma
-execução real na `main` comprovar o job e o artefato remoto.
+Validação de 2026-08-29: execução do GitHub Actions para o commit `4c9abff` aprovou instalação com
+lockfile imutável, `pnpm check` com um teste, build, ZIP e upload. O artefato remoto foi baixado e
+confirmou somente os dez arquivos de runtime esperados; o manifesto MV3 preservou exatamente os
+acessos aprovados. O job único e sequencial não usa `always()`, e a execução anterior com falha não
+produziu artefato, confirmando que uma etapa malsucedida impede o pacote final.
 
 ## 2. Domínio do timer
 
