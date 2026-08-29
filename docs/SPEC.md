@@ -165,14 +165,24 @@ sessões.
 
 ### 3.2 Operações persistentes
 
-- [ ] Persistir cada transição confirmada antes de apresentá-la como concluída.
-- [ ] Salvar exatamente um registro histórico antes de remover a sessão ativa durante a finalização.
-- [ ] Preservar a sessão ativa se a escrita do histórico ou a remoção subsequente falhar.
-- [ ] Repetir uma finalização interrompida sem duplicar o histórico.
-- [ ] Tratar falha de escrita e quota com mensagem recuperável e sem falso sucesso.
-- [ ] Recuperar sessão e histórico após remontagem do React e reabertura do popup.
-- [ ] Recuperar sessão e histórico após reinício do Chrome, atualização ou recarga da extensão e recriação de contextos.
-- [ ] Manter pausa, retomada, finalização e cancelamento disponíveis sem conexão com o Google.
+- [x] Persistir cada transição confirmada antes de apresentá-la como concluída.
+- [x] Salvar exatamente um registro histórico antes de remover a sessão ativa durante a finalização.
+- [x] Preservar a sessão ativa se a escrita do histórico ou a remoção subsequente falhar.
+- [x] Repetir uma finalização interrompida sem duplicar o histórico.
+- [x] Tratar falha de escrita e quota com mensagem recuperável e sem falso sucesso.
+- [x] Recuperar sessão e histórico após remontagem do React e reabertura do popup.
+- [x] Recuperar sessão e histórico após reinício do Chrome, atualização ou recarga da extensão e recriação de contextos.
+- [x] Manter pausa, retomada, finalização e cancelamento disponíveis sem conexão com o Google.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm build` e `git diff --check` concluídos, com 16 novos
+testes de operações persistentes e 74 testes totais aprovados. Foram confirmadas as cinco
+transições locais, ausência de escrita para rejeições e intenções já satisfeitas, resposta somente
+depois da escrita, histórico salvo antes da remoção e preservação do estado em cada falha. Retry de
+finalização reutilizou o primeiro registro sem duplicar nem estender a duração; colisões
+incompatíveis foram preservadas e rejeitadas. Falhas de leitura, escrita e quota produziram apenas
+motivos sanitizados. A recriação do módulo recuperou sessão e histórico de `storage.local`, e o
+fluxo permaneceu independente de acesso remoto. Os smokes reais de ciclo de vida do Chrome
+continuam reservados à seção 8.2.
 
 ### 3.3 Coordenação entre instâncias
 
@@ -190,8 +200,8 @@ sessões.
 - [x] Testar recuperação de sessão em execução, pausada e ausente.
 - [x] Testar recuperação de histórico vazio e preenchido.
 - [x] Testar dados ausentes, inválidos e incompatíveis.
-- [ ] Testar falha em cada escrita relevante da finalização.
-- [ ] Testar quota excedida sem perda silenciosa de estado.
+- [x] Testar falha em cada escrita relevante da finalização.
+- [x] Testar quota excedida sem perda silenciosa de estado.
 - [ ] Testar início, pausa, retomada, finalização e cancelamento a partir de duas instâncias.
 - [ ] Testar que exatamente um comando concorrente vence e o outro recebe conflito recuperável.
 - [ ] Testar que nenhuma falha remota do Google altera dados locais válidos.
