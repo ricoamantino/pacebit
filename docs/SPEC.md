@@ -419,12 +419,24 @@ conhecidas) e `git diff --check` passaram. O manifesto de produção manteve som
 
 ### 6.2 Controles
 
-- [ ] Conectar pausar, retomar, finalizar e cancelar às transições do domínio.
-- [ ] Solicitar confirmação curta ao cancelar quando já existir tempo registrado.
-- [ ] Não criar histórico ao cancelar.
-- [ ] Bloquear ações concorrentes enquanto uma transição persistente estiver sendo confirmada sem ocultar conflitos reais.
-- [ ] Informar falha de persistência e manter ação recuperável.
-- [ ] Refletir mudanças realizadas em outra instância sem exigir reabertura do popup.
+- [x] Conectar pausar, retomar, finalizar e cancelar às transições do domínio.
+- [x] Cancelar diretamente após ação explícita, sem criar etapa adicional de confirmação.
+- [x] Não criar histórico ao cancelar.
+- [x] Bloquear ações concorrentes enquanto uma transição persistente estiver sendo confirmada sem ocultar conflitos reais.
+- [x] Informar falha de persistência e manter ação recuperável.
+- [x] Refletir mudanças realizadas em outra instância sem exigir reabertura do popup.
+
+Validação de 2026-08-29: controles persistentes aprovados em 17 testes unitários novos, dentro de
+213 testes totais, e em três novos fluxos Playwright, dentro de cinco testes E2E. Pausa, retomada,
+finalização e cancelamento usaram a sessão observada e timestamps da borda, aguardaram a escrita e
+bloquearam cliques concorrentes. Cancelamento direto com duração zero ou positiva não criou
+histórico. Falhas de quota, Storage, dados inválidos e relógio foram sanitizadas e permaneceram
+recuperáveis; conflitos convergiram para o estado mais recente. Finalização pendente congelou a
+duração concluída, evitou contagem diária dupla e ofereceu somente a limpeza segura. Duas páginas
+reais refletiram pausa sem recarga, e os controles continuaram funcionais com o Google offline.
+`pnpm check`, `pnpm test:e2e` (5 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades
+conhecidas) e `git diff --check` passaram. O manifesto manteve somente `identity`, `storage` e o
+host da Google Tasks API, sem background ou content script.
 
 ### 6.3 Histórico
 
@@ -447,8 +459,8 @@ conhecidas) e `git diff --check` passaram. O manifesto de produção manteve som
 ### 6.5 Testes do fluxo local
 
 - [x] Testar seleção, início e bloqueio de segunda sessão pela interface.
-- [ ] Testar pausa, retomada, finalização e cancelamento pela interface.
-- [ ] Testar recuperação visual de sessão em execução e pausada.
+- [x] Testar pausa, retomada, finalização e cancelamento pela interface.
+- [x] Testar recuperação visual de sessão em execução e pausada.
 - [ ] Testar histórico, snapshots e ordenação recente.
 - [ ] Testar total diário durante execução, pausa e depois da finalização.
 - [ ] Testar continuidade completa do fluxo local sem acesso ao Google.

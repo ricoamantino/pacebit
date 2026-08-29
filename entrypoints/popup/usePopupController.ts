@@ -12,9 +12,16 @@ import {
   loadGoogleTasksCatalog,
 } from '../../src/google/tasks-catalog';
 import {
+  cancelStoredSession,
+  findPendingSessionCompletion,
+  finishStoredSession,
   observeStoredTimerState,
+  pauseStoredSession,
+  resumeStoredSession,
+  type SessionPersistenceFailure,
   type StoredTimerState,
   type StoredTimerStateObservation,
+  type StoredTransitionResult,
   startStoredSession,
 } from '../../src/storage/session-storage';
 import { getLocalCivilDate } from '../../src/tasks/scheduled-date';
@@ -22,6 +29,7 @@ import { type PrioritizedGoogleTask, prioritizeGoogleTasks } from '../../src/tas
 import { calculateDailyTotal } from '../../src/timer/daily-total';
 import { calculateActiveSessionDuration } from '../../src/timer/duration';
 import type { ActiveSession, DurationMs, TimestampMs } from '../../src/timer/session';
+import type { TransitionRejection } from '../../src/timer/transitions';
 
 export interface PopupDependencies {
   readonly getAuthorization: () => Promise<GoogleAuthorizationResult>;
@@ -36,6 +44,10 @@ export interface PopupDependencies {
     listener: (observation: StoredTimerStateObservation) => void,
   ) => () => void;
   readonly startStoredSession: typeof startStoredSession;
+  readonly pauseStoredSession: typeof pauseStoredSession;
+  readonly resumeStoredSession: typeof resumeStoredSession;
+  readonly finishStoredSession: typeof finishStoredSession;
+  readonly cancelStoredSession: typeof cancelStoredSession;
   readonly createSessionId: () => string;
   readonly now: () => TimestampMs;
 }
@@ -60,6 +72,7 @@ export interface PopupLocalSummary {
   readonly activeSession: ActiveSession | null;
   readonly activeDurationMs: DurationMs;
   readonly dailyTotalMs: DurationMs;
+  readonly finalizationPending: boolean;
   readonly historyCount: number;
 }
 
@@ -69,10 +82,15 @@ export interface PopupController {
   readonly taskCount: number;
   readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
   readonly sessionSelection: PopupSessionSelectionState;
+  readonly timerControls: PopupTimerControlsState;
   readonly connectGoogle: () => void;
   readonly retryGoogle: () => void;
   readonly selectTask: (taskListId: string, taskId: string) => void;
   readonly startSelectedSession: () => void;
+  readonly pauseActiveSession: () => void;
+  readonly resumeActiveSession: () => void;
+  readonly finishActiveSession: () => void;
+  readonly cancelActiveSession: () => void;
 }
 
 export type PopupSessionSelectionState =
@@ -87,6 +105,28 @@ export type PopupSessionSelectionState =
 
 type PopupSessionSelectionBlock = 'local-loading' | 'local-unavailable' | 'active-session';
 
+export type PopupTimerAction = 'pause' | 'resume' | 'finish' | 'cancel';
+
+export type PopupTimerFailure =
+  | 'storage-full'
+  | 'storage-unavailable'
+  | 'invalid-local-data'
+  | 'invalid-clock'
+  | 'state-changed';
+
+export type PopupTimerControlsState =
+  | { readonly status: 'idle' }
+  | { readonly status: 'unavailable' }
+  | { readonly status: 'working'; readonly action: PopupTimerAction }
+  | {
+      readonly status: 'failed';
+      readonly action: PopupTimerAction;
+      readonly reason: PopupTimerFailure;
+    }
+  | { readonly status: 'conflict' }
+  | { readonly status: 'finalization-pending' }
+  | { readonly status: 'succeeded'; readonly action: 'finish' | 'cancel' };
+
 const defaultDependencies: PopupDependencies = {
   getAuthorization: getGoogleAuthorization,
   requestAuthorization: requestGoogleAuthorization,
@@ -94,6 +134,10 @@ const defaultDependencies: PopupDependencies = {
   loadTasksCatalog: loadGoogleTasksCatalog,
   observeTimerState: observeStoredTimerState,
   startStoredSession,
+  pauseStoredSession,
+  resumeStoredSession,
+  finishStoredSession,
+  cancelStoredSession,
   createSessionId: () => globalThis.crypto.randomUUID(),
   now: Date.now,
 };
@@ -112,6 +156,8 @@ interface SelectedTaskKey {
 
 type SessionStartStatus = 'idle' | 'starting' | 'storage-full' | 'unavailable';
 
+type TimerActionStatus = Exclude<PopupTimerControlsState, { readonly status: 'unavailable' }>;
+
 export function usePopupController(
   dependencies: PopupDependencies = defaultDependencies,
 ): PopupController {
@@ -125,10 +171,12 @@ export function usePopupController(
   const [selectedTaskKey, setSelectedTaskKey] = useState<SelectedTaskKey | null>(null);
   const [startingTask, setStartingTask] = useState<PrioritizedGoogleTask | null>(null);
   const [sessionStartStatus, setSessionStartStatus] = useState<SessionStartStatus>('idle');
+  const [timerActionStatus, setTimerActionStatus] = useState<TimerActionStatus>({ status: 'idle' });
   const googleRef = useRef(google);
   const nextOperationId = useRef(0);
   const activeOperation = useRef<ActiveOperation | null>(null);
   const startInFlight = useRef(false);
+  const timerActionInFlight = useRef(false);
   const mounted = useRef(false);
 
   useEffect(() => {
@@ -396,6 +444,7 @@ export function usePopupController(
         setSelectedTaskKey(null);
         setStartingTask(null);
         setSessionStartStatus('idle');
+        setTimerActionStatus({ status: 'idle' });
         return;
       }
 
@@ -404,6 +453,7 @@ export function usePopupController(
         setSelectedTaskKey(null);
         setStartingTask(null);
         setSessionStartStatus('idle');
+        setTimerActionStatus({ status: 'idle' });
         return;
       }
 
@@ -423,11 +473,157 @@ export function usePopupController(
     }
   }, [dependencies, selectedTask, storedTimerState]);
 
+  const executeTimerAction = useCallback(
+    async <T>(
+      action: PopupTimerAction,
+      baseState: StoredTimerState,
+      command: () => Promise<StoredTransitionResult<T>>,
+      applyValue: (state: StoredTimerState, value: T) => StoredTimerState,
+    ): Promise<void> => {
+      if (timerActionInFlight.current) {
+        return;
+      }
+
+      timerActionInFlight.current = true;
+      setTimerActionStatus({ status: 'working', action });
+
+      try {
+        const result = await command();
+
+        if (!mounted.current) {
+          return;
+        }
+
+        if (result.status === 'applied' || result.status === 'unchanged') {
+          setStoredTimerState((current) => {
+            const currentState =
+              current.status === 'loading' || !current.value ? baseState : current.value;
+
+            return { status: 'ready', value: applyValue(currentState, result.value) };
+          });
+          setTimerActionStatus(
+            action === 'finish' || action === 'cancel'
+              ? { status: 'succeeded', action }
+              : { status: 'idle' },
+          );
+          return;
+        }
+
+        if (result.status === 'conflict') {
+          setStoredTimerState({ status: 'ready', value: result.state });
+          setTimerActionStatus(
+            result.reason === 'finalization-pending' ? { status: 'idle' } : { status: 'conflict' },
+          );
+          return;
+        }
+
+        setTimerActionStatus({
+          status: 'failed',
+          action,
+          reason: mapTimerActionFailure(result),
+        });
+      } catch {
+        if (mounted.current) {
+          setTimerActionStatus({ status: 'failed', action, reason: 'storage-unavailable' });
+        }
+      } finally {
+        timerActionInFlight.current = false;
+      }
+    },
+    [],
+  );
+
+  const pauseActiveSession = useCallback(() => {
+    if (storedTimerState.status !== 'ready') {
+      return;
+    }
+
+    const state = storedTimerState.value;
+    const session = state.activeSession;
+
+    if (session?.state !== 'running') {
+      return;
+    }
+
+    void executeTimerAction(
+      'pause',
+      state,
+      () => dependencies.pauseStoredSession(session, dependencies.now()),
+      (current, value) => ({ ...current, activeSession: value }),
+    );
+  }, [dependencies, executeTimerAction, storedTimerState]);
+
+  const resumeActiveSession = useCallback(() => {
+    if (storedTimerState.status !== 'ready') {
+      return;
+    }
+
+    const state = storedTimerState.value;
+    const session = state.activeSession;
+
+    if (session?.state !== 'paused') {
+      return;
+    }
+
+    void executeTimerAction(
+      'resume',
+      state,
+      () => dependencies.resumeStoredSession(session, dependencies.now()),
+      (current, value) => ({ ...current, activeSession: value }),
+    );
+  }, [dependencies, executeTimerAction, storedTimerState]);
+
+  const finishActiveSession = useCallback(() => {
+    if (storedTimerState.status !== 'ready') {
+      return;
+    }
+
+    const state = storedTimerState.value;
+    const session = state.activeSession;
+
+    if (!session) {
+      return;
+    }
+
+    void executeTimerAction(
+      'finish',
+      state,
+      () => dependencies.finishStoredSession(session, dependencies.now()),
+      (current, value) => ({
+        activeSession: null,
+        history: current.history.some((completed) => completed.id === value.id)
+          ? current.history
+          : [...current.history, value],
+      }),
+    );
+  }, [dependencies, executeTimerAction, storedTimerState]);
+
+  const cancelActiveSession = useCallback(() => {
+    if (storedTimerState.status !== 'ready') {
+      return;
+    }
+
+    const state = storedTimerState.value;
+    const session = state.activeSession;
+
+    if (!session) {
+      return;
+    }
+
+    void executeTimerAction(
+      'cancel',
+      state,
+      () => dependencies.cancelStoredSession(session),
+      (current) => ({ ...current, activeSession: null }),
+    );
+  }, [dependencies, executeTimerAction, storedTimerState]);
+
   const sessionSelection = createSessionSelectionState(
     storedTimerState,
     sessionStartStatus === 'starting' ? (startingTask ?? selectedTask) : selectedTask,
     sessionStartStatus,
   );
+  const timerControls = createTimerControlsState(storedTimerState, timerActionStatus);
 
   return {
     google,
@@ -435,10 +631,15 @@ export function usePopupController(
     taskCount: countTasks(google.taskLists),
     prioritizedTasks,
     sessionSelection,
+    timerControls,
     connectGoogle: () => void authorizeAndLoad('interactive'),
     retryGoogle: () => void authorizeAndLoad('retry'),
     selectTask,
     startSelectedSession: () => void startSelectedSession(),
+    pauseActiveSession,
+    resumeActiveSession,
+    finishActiveSession,
+    cancelActiveSession,
   };
 }
 
@@ -494,6 +695,49 @@ function createSessionSelectionState(
   }
 
   return { status: 'selecting', selectedTask };
+}
+
+function createTimerControlsState(
+  storedState:
+    | { readonly status: 'loading' }
+    | { readonly status: 'ready'; readonly value: StoredTimerState }
+    | { readonly status: 'error'; readonly value?: StoredTimerState },
+  actionStatus: TimerActionStatus,
+): PopupTimerControlsState {
+  if (storedState.status !== 'ready') {
+    return { status: 'unavailable' };
+  }
+
+  if (actionStatus.status === 'working') {
+    return actionStatus;
+  }
+
+  if (findPendingSessionCompletion(storedState.value)) {
+    return { status: 'finalization-pending' };
+  }
+
+  return actionStatus;
+}
+
+function mapTimerActionFailure(
+  result:
+    | { readonly status: 'failed'; readonly reason: SessionPersistenceFailure }
+    | { readonly status: 'rejected'; readonly reason: TransitionRejection },
+): PopupTimerFailure {
+  if (result.status === 'rejected') {
+    return result.reason === 'invalid-timestamp' || result.reason === 'timestamp-out-of-order'
+      ? 'invalid-clock'
+      : 'state-changed';
+  }
+
+  switch (result.reason) {
+    case 'quota-exceeded':
+      return 'storage-full';
+    case 'invalid-stored-data':
+      return 'invalid-local-data';
+    case 'storage-unavailable':
+      return 'storage-unavailable';
+  }
 }
 
 function createProgressListener(
@@ -558,16 +802,19 @@ function countTasks(taskLists: readonly GoogleTaskListLoad[]): number {
 }
 
 function createLocalSummary(state: StoredTimerState, nowMs: TimestampMs): PopupLocalSummary {
+  const pendingCompletion = findPendingSessionCompletion(state);
+
   return {
     activeSession: state.activeSession,
-    activeDurationMs: state.activeSession
-      ? calculateActiveSessionDuration(state.activeSession, nowMs)
-      : 0,
+    activeDurationMs:
+      pendingCompletion?.durationMs ??
+      (state.activeSession ? calculateActiveSessionDuration(state.activeSession, nowMs) : 0),
     dailyTotalMs: calculateDailyTotal({
-      activeSession: state.activeSession,
+      activeSession: pendingCompletion ? null : state.activeSession,
       completedSessions: state.history,
       nowMs,
     }),
+    finalizationPending: pendingCompletion !== null,
     historyCount: state.history.length,
   };
 }

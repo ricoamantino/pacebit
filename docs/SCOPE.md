@@ -118,7 +118,7 @@ Regras:
 - Ações repetidas ou cliques rápidos não podem criar sessões históricas duplicadas.
 - Finalizar deve salvar o histórico antes de remover a sessão ativa.
 - Se o salvamento falhar, a sessão ativa deve ser preservada e o usuário deve poder tentar novamente.
-- Cancelar exige confirmação curta quando já existir tempo registrado e não cria histórico.
+- Cancelar ocorre diretamente após a ação explícita no controle identificado e não cria histórico.
 - Uma sessão pode ser finalizada com duração muito curta; o histórico preserva a duração real, sem inventar um mínimo.
 
 ### 4.5 Correção e recuperação do timer
@@ -353,6 +353,7 @@ Possibilidades futuras não devem influenciar a arquitetura do MVP sem necessida
 8. Alterar tarefas remotas apenas por `PATCH` dos campos mínimos de conclusão, após ação explícita.
 9. Não exigir background service worker nem mensageria enquanto módulos compartilhados e persistência resolverem o fluxo com segurança.
 10. Não criar content scripts, manipular o DOM do Google Tasks nem antecipar integrações futuras.
+11. Cancelar uma sessão ativa é uma ação direta, sem confirmação adicional, e nunca cria histórico.
 
 ## 14. Referências técnicas
 

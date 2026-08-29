@@ -13,6 +13,12 @@ import type {
   StoredTimerState,
   StoredTimerStateObservation,
 } from '../../src/storage/session-storage';
+import {
+  cancelSession,
+  finishSession,
+  pauseSession,
+  resumeSession,
+} from '../../src/timer/transitions';
 
 const NOW_MS = 10_000;
 const EMPTY_TIMER_STATE: StoredTimerState = { activeSession: null, history: [] };
@@ -241,6 +247,9 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent('00:00:05');
     expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:00:07');
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
+    expect(screen.getByRole('button', { name: 'Pausar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Finalizar sessão' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Cancelar sessão' })).toBeEnabled();
   });
 
   it('atualiza a duração apresentada a cada segundo sem alterar a sessão persistida', () => {
@@ -797,6 +806,299 @@ describe('App', () => {
     },
   );
 
+  it('pausa e retoma usando a sessão observada e um timestamp por ação', async () => {
+    let nowMs = NOW_MS;
+    const pauseStoredSession = vi.fn<PopupDependencies['pauseStoredSession']>((expected, atMs) =>
+      Promise.resolve(pauseSession(expected, atMs)),
+    );
+    const resumeStoredSession = vi.fn<PopupDependencies['resumeStoredSession']>((expected, atMs) =>
+      Promise.resolve(resumeSession(expected, atMs)),
+    );
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      pauseStoredSession,
+      resumeStoredSession,
+      now: () => nowMs,
+    });
+
+    render(<App dependencies={dependencies} />);
+    const running = activeTimerState().activeSession;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    expect(await screen.findByRole('button', { name: 'Retomar' })).toBeVisible();
+    expect(pauseStoredSession).toHaveBeenCalledOnce();
+    expect(pauseStoredSession).toHaveBeenCalledWith(running, NOW_MS);
+    expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent('Pausada');
+
+    nowMs += 2_000;
+    const paused = pauseStoredSession.mock.results[0]?.value;
+    fireEvent.click(screen.getByRole('button', { name: 'Retomar' }));
+
+    expect(await screen.findByRole('button', { name: 'Pausar' })).toBeVisible();
+    expect(resumeStoredSession).toHaveBeenCalledOnce();
+    await expect(paused).resolves.toMatchObject({ status: 'applied' });
+    expect(resumeStoredSession.mock.calls[0]?.[1]).toBe(12_000);
+  });
+
+  it.each([
+    ['em execução', activeTimerState()],
+    ['pausada', pausedTimerState()],
+  ])('finaliza uma sessão %s e acrescenta um único histórico', async (_name, timer) => {
+    const finishStoredSession = vi.fn<PopupDependencies['finishStoredSession']>((expected, atMs) =>
+      Promise.resolve(finishSession(expected, atMs)),
+    );
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(timer),
+      finishStoredSession,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+
+    expect(await screen.findByText('Sessão finalizada e salva no histórico.')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent(
+      'Nenhuma sessão em andamento.',
+    );
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+    expect(finishStoredSession).toHaveBeenCalledWith(timer.activeSession, NOW_MS);
+  });
+
+  it.each([
+    ['com tempo', activeTimerState()],
+    ['sem tempo', zeroDurationTimerState()],
+  ])('cancela diretamente uma sessão %s sem criar histórico', async (_name, timer) => {
+    const cancelStoredSession = vi.fn<PopupDependencies['cancelStoredSession']>((expected) =>
+      Promise.resolve(cancelSession(expected)),
+    );
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(timer),
+      cancelStoredSession,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar sessão' }));
+
+    expect(
+      await screen.findByText('Sessão cancelada. Nenhum tempo foi adicionado ao histórico.'),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
+    expect(cancelStoredSession).toHaveBeenCalledWith(timer.activeSession);
+  });
+
+  it('bloqueia todas as ações enquanto uma transição está sendo persistida', async () => {
+    const pendingPause =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['pauseStoredSession']>>>();
+    const pauseStoredSession = vi.fn<PopupDependencies['pauseStoredSession']>(
+      () => pendingPause.promise,
+    );
+    const finishStoredSession = vi.fn<PopupDependencies['finishStoredSession']>();
+    const cancelStoredSession = vi.fn<PopupDependencies['cancelStoredSession']>();
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      pauseStoredSession,
+      finishStoredSession,
+      cancelStoredSession,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    const pausing = await screen.findByRole('button', { name: 'Pausando…' });
+    expect(pausing).toBeDisabled();
+    expect(pausing).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button', { name: 'Finalizar sessão' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar sessão' })).toBeDisabled();
+    fireEvent.click(pausing);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    expect(pauseStoredSession).toHaveBeenCalledOnce();
+    expect(finishStoredSession).not.toHaveBeenCalled();
+    expect(cancelStoredSession).not.toHaveBeenCalled();
+
+    const expected = activeTimerState().activeSession;
+
+    if (expected?.state !== 'running') {
+      throw new Error('Expected a running session.');
+    }
+
+    pendingPause.resolve(pauseSession(expected, NOW_MS));
+    expect(await screen.findByRole('button', { name: 'Retomar' })).toBeVisible();
+  });
+
+  it('preserva a sessão e permite repetir uma ação após falha de quota', async () => {
+    const pauseStoredSession = vi
+      .fn<PopupDependencies['pauseStoredSession']>()
+      .mockResolvedValueOnce({ status: 'failed', reason: 'quota-exceeded' })
+      .mockImplementationOnce((expected, atMs) => Promise.resolve(pauseSession(expected, atMs)));
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      pauseStoredSession,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    expect(
+      await screen.findByText(
+        'O armazenamento local está sem espaço. A sessão foi preservada; tente novamente.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Pausar' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    expect(await screen.findByRole('button', { name: 'Retomar' })).toBeVisible();
+    expect(pauseStoredSession).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [
+      { status: 'failed', reason: 'storage-unavailable' } as const,
+      'Não foi possível confirmar a ação. A sessão foi preservada; tente novamente.',
+    ],
+    [
+      { status: 'failed', reason: 'invalid-stored-data' } as const,
+      'Os dados locais não puderam ser validados. Nenhuma alteração foi feita.',
+    ],
+    [
+      { status: 'rejected', reason: 'timestamp-out-of-order' } as const,
+      'A data e a hora do dispositivo não permitem registrar esta ação agora.',
+    ],
+  ])('apresenta falha local sanitizada sem alterar a sessão', async (result, message) => {
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      pauseStoredSession: vi.fn().mockResolvedValue(result),
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    expect(await screen.findByText(message)).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent('Em execução');
+    expect(document.body).not.toHaveTextContent(result.reason);
+  });
+
+  it('converge para uma alteração concorrente e informa o conflito', async () => {
+    const latest = pausedTimerState();
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      pauseStoredSession: vi.fn().mockResolvedValue({
+        status: 'conflict',
+        reason: 'stale-state',
+        state: latest,
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+
+    expect(await screen.findByRole('button', { name: 'Retomar' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'A sessão foi atualizada em outra janela. O estado mais recente está sendo exibido.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('reflete uma sessão alterada pelo observador sem reabrir o popup', async () => {
+    let notify: ((observation: StoredTimerStateObservation) => void) | undefined;
+    const dependencies = createDependencies({
+      observeTimerState: (listener) => {
+        notify = listener;
+        listener({ status: 'ready', value: activeTimerState() });
+        return () => {};
+      },
+    });
+
+    render(<App dependencies={dependencies} />);
+    expect(screen.getByRole('button', { name: 'Pausar' })).toBeVisible();
+
+    act(() => notify?.({ status: 'ready', value: pausedTimerState() }));
+
+    expect(screen.getByRole('button', { name: 'Retomar' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent('Pausada');
+  });
+
+  it('trata finalização pendente sem duplicar duração ou total diário', async () => {
+    const active = activeTimerState().activeSession;
+
+    if (active?.state !== 'running') {
+      throw new Error('Expected a running session.');
+    }
+
+    const completed = {
+      id: active.id,
+      task: active.task,
+      taskList: active.taskList,
+      startedAtMs: active.startedAtMs,
+      endedAtMs: 8_000,
+      periods: [{ startedAtMs: active.runningSinceMs, endedAtMs: 8_000 }],
+      durationMs: 3_000,
+    } as const;
+    const pendingState = { activeSession: active, history: [completed] };
+    const finishStoredSession = vi
+      .fn<PopupDependencies['finishStoredSession']>()
+      .mockResolvedValue({
+        status: 'applied',
+        value: completed,
+      });
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(pendingState),
+      finishStoredSession,
+    });
+
+    render(<App dependencies={dependencies} />);
+    const session = screen.getByRole('region', { name: 'Sessão atual' });
+
+    expect(session).toHaveTextContent('00:00:03');
+    expect(session).toHaveTextContent('Finalização pendente');
+    expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:00:03');
+    expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancelar sessão' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir finalização' }));
+
+    expect(await screen.findByText('Sessão finalizada e salva no histórico.')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
+    expect(finishStoredSession).toHaveBeenCalledWith(active, NOW_MS);
+  });
+
+  it('mantém a escrita após desmontar sem atualizar a árvore encerrada', async () => {
+    const pendingCancel =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['cancelStoredSession']>>>();
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      cancelStoredSession: vi.fn(() => pendingCancel.promise),
+    });
+    const view = render(<App dependencies={dependencies} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar sessão' }));
+    await screen.findByRole('button', { name: 'Cancelando…' });
+    view.unmount();
+    pendingCancel.resolve({ status: 'applied', value: null });
+    await act(async () => Promise.resolve());
+
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it('bloqueia controles quando o estado local deixa de ser validável', () => {
+    const dependencies = createDependencies({
+      observeTimerState: (listener) => {
+        listener({ status: 'ready', value: activeTimerState() });
+        listener({ status: 'invalid' });
+        return () => {};
+      },
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    expect(screen.getByRole('button', { name: 'Pausar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Finalizar sessão' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar sessão' })).toBeDisabled();
+    expect(
+      screen.getByText('Os controles estão indisponíveis até os dados locais serem validados.'),
+    ).toBeVisible();
+  });
+
   it('ignora progresso de uma operação substituída', async () => {
     let oldProgress: GoogleTasksCatalogProgressListener | undefined;
     const refresh = Promise.withResolvers<GoogleTasksCatalogResult>();
@@ -885,6 +1187,18 @@ function createDependencies(overrides: Partial<PopupDependencies> = {}): PopupDe
           runningSinceMs: input.startedAtMs,
         },
       }),
+    ),
+    pauseStoredSession: vi.fn<PopupDependencies['pauseStoredSession']>((expected, atMs) =>
+      Promise.resolve(pauseSession(expected, atMs)),
+    ),
+    resumeStoredSession: vi.fn<PopupDependencies['resumeStoredSession']>((expected, atMs) =>
+      Promise.resolve(resumeSession(expected, atMs)),
+    ),
+    finishStoredSession: vi.fn<PopupDependencies['finishStoredSession']>((expected, atMs) =>
+      Promise.resolve(finishSession(expected, atMs)),
+    ),
+    cancelStoredSession: vi.fn<PopupDependencies['cancelStoredSession']>((expected) =>
+      Promise.resolve(cancelSession(expected)),
     ),
     createSessionId: () => 'controlled-session-id',
     now: () => NOW_MS,
@@ -997,6 +1311,23 @@ function pausedTimerState(): StoredTimerState {
       periods: [{ startedAtMs: 5_000, endedAtMs: 7_000 }],
     },
     history: activeTimerState().history,
+  };
+}
+
+function zeroDurationTimerState(): StoredTimerState {
+  const state = activeTimerState();
+
+  if (state.activeSession?.state !== 'running') {
+    throw new Error('Expected a running session.');
+  }
+
+  return {
+    activeSession: {
+      ...state.activeSession,
+      startedAtMs: NOW_MS,
+      runningSinceMs: NOW_MS,
+    },
+    history: state.history,
   };
 }
 

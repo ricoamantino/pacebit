@@ -6,6 +6,8 @@ import {
   type PopupGoogleState,
   type PopupLocalState,
   type PopupSessionSelectionState,
+  type PopupTimerAction,
+  type PopupTimerControlsState,
   usePopupController,
 } from './usePopupController';
 
@@ -26,7 +28,14 @@ export function App({ dependencies }: AppProps) {
         </div>
       </header>
 
-      <CurrentSession state={controller.local} />
+      <CurrentSession
+        state={controller.local}
+        controls={controller.timerControls}
+        onPause={controller.pauseActiveSession}
+        onResume={controller.resumeActiveSession}
+        onFinish={controller.finishActiveSession}
+        onCancel={controller.cancelActiveSession}
+      />
       <GoogleStatus
         state={controller.google}
         taskCount={controller.taskCount}
@@ -177,7 +186,21 @@ function GoogleStatus({
   );
 }
 
-function CurrentSession({ state }: { readonly state: PopupLocalState }) {
+function CurrentSession({
+  state,
+  controls,
+  onPause,
+  onResume,
+  onFinish,
+  onCancel,
+}: {
+  readonly state: PopupLocalState;
+  readonly controls: PopupTimerControlsState;
+  readonly onPause: () => void;
+  readonly onResume: () => void;
+  readonly onFinish: () => void;
+  readonly onCancel: () => void;
+}) {
   const summary = state.status === 'loading' ? undefined : state.value;
   const unavailable = state.status === 'error';
 
@@ -201,18 +224,199 @@ function CurrentSession({ state }: { readonly state: PopupLocalState }) {
             <p className="summary-title">{summary.activeSession.task.title || 'Sem título'}</p>
             <p className="summary-detail">
               {summary.activeSession.taskList.title || 'Lista sem título'} ·{' '}
-              {summary.activeSession.state === 'running' ? 'Em execução' : 'Pausada'}
+              {summary.finalizationPending
+                ? 'Finalização pendente'
+                : summary.activeSession.state === 'running'
+                  ? 'Em execução'
+                  : 'Pausada'}
             </p>
             <p className="summary-next-action">
-              Próxima ação: {summary.activeSession.state === 'running' ? 'Pausar' : 'Retomar'}.
+              Próxima ação:{' '}
+              {summary.finalizationPending
+                ? 'Concluir finalização'
+                : summary.activeSession.state === 'running'
+                  ? 'Pausar'
+                  : 'Retomar'}
+              .
             </p>
+            <TimerControls
+              sessionState={summary.activeSession.state}
+              finalizationPending={summary.finalizationPending}
+              state={controls}
+              onPause={onPause}
+              onResume={onResume}
+              onFinish={onFinish}
+              onCancel={onCancel}
+            />
           </>
         ) : (
-          <p>{unavailable ? 'Dados locais indisponíveis.' : 'Nenhuma sessão em andamento.'}</p>
+          <>
+            <p>{unavailable ? 'Dados locais indisponíveis.' : 'Nenhuma sessão em andamento.'}</p>
+            <TimerStatus state={controls} />
+          </>
         )}
       </SummaryCard>
     </section>
   );
+}
+
+function TimerControls({
+  sessionState,
+  finalizationPending,
+  state,
+  onPause,
+  onResume,
+  onFinish,
+  onCancel,
+}: {
+  readonly sessionState: 'running' | 'paused';
+  readonly finalizationPending: boolean;
+  readonly state: PopupTimerControlsState;
+  readonly onPause: () => void;
+  readonly onResume: () => void;
+  readonly onFinish: () => void;
+  readonly onCancel: () => void;
+}) {
+  const workingAction = state.status === 'working' ? state.action : null;
+  const disabled = state.status === 'working' || state.status === 'unavailable';
+
+  return (
+    <div className="timer-control-area">
+      <TimerStatus state={state} />
+      <fieldset className="timer-controls">
+        <legend className="visually-hidden">Controles da sessão</legend>
+        {finalizationPending ? (
+          <TimerButton
+            action="finish"
+            className="primary-button"
+            label="Concluir finalização"
+            workingAction={workingAction}
+            disabled={disabled}
+            onClick={onFinish}
+          />
+        ) : (
+          <>
+            <TimerButton
+              action={sessionState === 'running' ? 'pause' : 'resume'}
+              className="primary-button"
+              label={sessionState === 'running' ? 'Pausar' : 'Retomar'}
+              workingAction={workingAction}
+              disabled={disabled}
+              onClick={sessionState === 'running' ? onPause : onResume}
+            />
+            <TimerButton
+              action="finish"
+              className="secondary-button"
+              label="Finalizar sessão"
+              workingAction={workingAction}
+              disabled={disabled}
+              onClick={onFinish}
+            />
+            <TimerButton
+              action="cancel"
+              className="danger-button"
+              label="Cancelar sessão"
+              workingAction={workingAction}
+              disabled={disabled}
+              onClick={onCancel}
+            />
+          </>
+        )}
+      </fieldset>
+    </div>
+  );
+}
+
+function TimerButton({
+  action,
+  className,
+  label,
+  workingAction,
+  disabled,
+  onClick,
+}: {
+  readonly action: PopupTimerAction;
+  readonly className: string;
+  readonly label: string;
+  readonly workingAction: PopupTimerAction | null;
+  readonly disabled: boolean;
+  readonly onClick: () => void;
+}) {
+  const working = workingAction === action;
+
+  return (
+    <button
+      className={className}
+      type="button"
+      aria-busy={working || undefined}
+      aria-describedby="timer-action-status"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {working ? workingActionLabel(action) : label}
+    </button>
+  );
+}
+
+function TimerStatus({ state }: { readonly state: PopupTimerControlsState }) {
+  const message = timerStatusMessage(state);
+
+  return (
+    <p id="timer-action-status" className="timer-action-status" role="status" aria-atomic="true">
+      {message}
+    </p>
+  );
+}
+
+function workingActionLabel(action: PopupTimerAction): string {
+  switch (action) {
+    case 'pause':
+      return 'Pausando…';
+    case 'resume':
+      return 'Retomando…';
+    case 'finish':
+      return 'Finalizando…';
+    case 'cancel':
+      return 'Cancelando…';
+  }
+}
+
+function timerStatusMessage(state: PopupTimerControlsState): string {
+  switch (state.status) {
+    case 'idle':
+      return 'Cada ação será salva no armazenamento local.';
+    case 'unavailable':
+      return 'Os controles estão indisponíveis até os dados locais serem validados.';
+    case 'working':
+      return `${workingActionLabel(state.action)} Aguarde a confirmação local.`;
+    case 'conflict':
+      return 'A sessão foi atualizada em outra janela. O estado mais recente está sendo exibido.';
+    case 'finalization-pending':
+      return 'O histórico já foi salvo. Conclua a finalização para limpar a sessão ativa.';
+    case 'succeeded':
+      return state.action === 'cancel'
+        ? 'Sessão cancelada. Nenhum tempo foi adicionado ao histórico.'
+        : 'Sessão finalizada e salva no histórico.';
+    case 'failed':
+      return timerFailureMessage(state.reason);
+  }
+}
+
+function timerFailureMessage(
+  reason: Extract<PopupTimerControlsState, { status: 'failed' }>['reason'],
+): string {
+  switch (reason) {
+    case 'storage-full':
+      return 'O armazenamento local está sem espaço. A sessão foi preservada; tente novamente.';
+    case 'storage-unavailable':
+      return 'Não foi possível confirmar a ação. A sessão foi preservada; tente novamente.';
+    case 'invalid-local-data':
+      return 'Os dados locais não puderam ser validados. Nenhuma alteração foi feita.';
+    case 'invalid-clock':
+      return 'A data e a hora do dispositivo não permitem registrar esta ação agora.';
+    case 'state-changed':
+      return 'A sessão mudou antes da confirmação. Confira o estado atual e tente novamente.';
+  }
 }
 
 function LocalTotals({ state }: { readonly state: PopupLocalState }) {

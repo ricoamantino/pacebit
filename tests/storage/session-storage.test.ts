@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
-import { readActiveSession, readSessionHistory } from '../../src/storage/session-storage';
+import {
+  findPendingSessionCompletion,
+  readActiveSession,
+  readSessionHistory,
+  readStoredTimerState,
+} from '../../src/storage/session-storage';
 
 const runningSession = {
   id: 'session-running',
@@ -79,6 +84,47 @@ describe('session storage', () => {
       status: 'ready',
       value: [completedSession],
     });
+  });
+
+  it('identifies a compatible completion awaiting active-session cleanup', async () => {
+    const pendingCompletion = {
+      id: runningSession.id,
+      task: runningSession.task,
+      taskList: runningSession.taskList,
+      startedAtMs: runningSession.startedAtMs,
+      endedAtMs: 2_000,
+      periods: [{ startedAtMs: 1_000, endedAtMs: 2_000 }],
+      durationMs: 1_000,
+    } as const;
+    await storage.setItem('local:active-session', runningSession);
+    await storage.setItem('local:session-history', [pendingCompletion]);
+
+    const result = await readStoredTimerState();
+
+    expect(result).toEqual({
+      status: 'ready',
+      value: { activeSession: runningSession, history: [pendingCompletion] },
+    });
+    expect(result.status === 'ready' && findPendingSessionCompletion(result.value)).toEqual(
+      pendingCompletion,
+    );
+  });
+
+  it('rejects an active session and history entry with the same ID but incompatible context', async () => {
+    await storage.setItem('local:active-session', runningSession);
+    await storage.setItem('local:session-history', [
+      {
+        id: runningSession.id,
+        task: { ...runningSession.task, title: 'Outro contexto' },
+        taskList: runningSession.taskList,
+        startedAtMs: runningSession.startedAtMs,
+        endedAtMs: 2_000,
+        periods: [{ startedAtMs: 1_000, endedAtMs: 2_000 }],
+        durationMs: 1_000,
+      },
+    ]);
+
+    await expect(readStoredTimerState()).resolves.toEqual({ status: 'invalid' });
   });
 
   it('discards unrecognized fields while reconstructing stored data', async () => {

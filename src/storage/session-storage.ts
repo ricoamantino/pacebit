@@ -65,6 +65,12 @@ export async function readStoredTimerState(): Promise<SessionStorageRead<StoredT
   return withSessionStorageLock(readStoredTimerStateUnlocked);
 }
 
+export function findPendingSessionCompletion(state: StoredTimerState): CompletedSession | null {
+  const completion = findCompletionForActiveSession(state);
+
+  return completion.status === 'matching' ? completion.value : null;
+}
+
 export function observeStoredTimerState(
   listener: (observation: StoredTimerStateObservation) => void,
 ): () => void {
@@ -280,12 +286,15 @@ async function readStoredTimerStateUnlocked(): Promise<SessionStorageRead<Stored
     readSessionHistoryUnlocked(),
   ]);
 
-  return activeSession.status === 'invalid' || history.status === 'invalid'
+  if (activeSession.status === 'invalid' || history.status === 'invalid') {
+    return { status: 'invalid' };
+  }
+
+  const state = { activeSession: activeSession.value, history: history.value };
+
+  return findCompletionForActiveSession(state).status === 'incompatible'
     ? { status: 'invalid' }
-    : {
-        status: 'ready',
-        value: { activeSession: activeSession.value, history: history.value },
-      };
+    : { status: 'ready', value: state };
 }
 
 type ActiveCompletion =

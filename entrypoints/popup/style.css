@@ -295,8 +295,29 @@ h3 {
   font-weight: 650;
 }
 
+.timer-control-area,
+.timer-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.timer-controls {
+  grid-template-columns: 1fr 1fr;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.timer-action-status {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   min-height: 36px;
   border-radius: 8px;
   padding: 7px 12px;
@@ -323,6 +344,20 @@ h3 {
 
 .secondary-button:hover:not(:disabled) {
   background: #f2f5fa;
+}
+
+.danger-button {
+  border: 1px solid #dc2626;
+  background: #ffffff;
+  color: #b91c1c;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.timer-controls > .primary-button {
+  grid-column: 1 / -1;
 }
 
 button:disabled {
