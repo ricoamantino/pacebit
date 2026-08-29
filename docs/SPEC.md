@@ -147,13 +147,21 @@ confirmou ausência de relógio interno, contador, cache temporal ou nova depend
 
 ### 3.1 WXT Storage
 
-- [ ] Definir item `local:` conhecido para a sessão ativa com `storage.defineItem`.
-- [ ] Definir item `local:` conhecido para o histórico com `storage.defineItem`.
-- [ ] Não usar `session:`, `sync:` nem wrapper genérico sobre WXT Storage.
-- [ ] Fazer leitura ausente produzir estado inicial válido.
-- [ ] Detectar dados persistidos inválidos ou incompatíveis sem tratá-los silenciosamente como válidos.
-- [ ] Usar versão e migração nativas somente quando uma mudança real de schema exigir.
-- [ ] Não persistir preferências, tokens nem cópias completas das respostas do Google Tasks.
+- [x] Definir item `local:` conhecido para a sessão ativa com `storage.defineItem`.
+- [x] Definir item `local:` conhecido para o histórico com `storage.defineItem`.
+- [x] Não usar `session:`, `sync:` nem wrapper genérico sobre WXT Storage.
+- [x] Fazer leitura ausente produzir estado inicial válido.
+- [x] Detectar dados persistidos inválidos ou incompatíveis sem tratá-los silenciosamente como válidos.
+- [x] Usar versão e migração nativas somente quando uma mudança real de schema exigir.
+- [x] Não persistir preferências, tokens nem cópias completas das respostas do Google Tasks.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm build` e `git diff --check` concluídos, com 22 novos
+testes de persistência e 58 testes totais aprovados. O fake browser confirmou recuperação dos
+estados ausente, em execução e pausado, histórico vazio e preenchido, fallbacks sem escrita física
+e uso exclusivo de `storage.local`. Dados incompatíveis, períodos inválidos, duração inconsistente
+e IDs históricos duplicados foram rejeitados explicitamente; campos desconhecidos foram removidos
+durante a reconstrução. Inspeção confirmou itens privados sem versão, migração ou dados alheios às
+sessões.
 
 ### 3.2 Operações persistentes
 
@@ -179,9 +187,9 @@ confirmou ausência de relógio interno, contador, cache temporal ou nova depend
 
 ### 3.4 Testes de persistência e concorrência
 
-- [ ] Testar recuperação de sessão em execução, pausada e ausente.
-- [ ] Testar recuperação de histórico vazio e preenchido.
-- [ ] Testar dados ausentes, inválidos e incompatíveis.
+- [x] Testar recuperação de sessão em execução, pausada e ausente.
+- [x] Testar recuperação de histórico vazio e preenchido.
+- [x] Testar dados ausentes, inválidos e incompatíveis.
 - [ ] Testar falha em cada escrita relevante da finalização.
 - [ ] Testar quota excedida sem perda silenciosa de estado.
 - [ ] Testar início, pausa, retomada, finalização e cancelamento a partir de duas instâncias.
