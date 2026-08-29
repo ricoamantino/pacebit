@@ -17,24 +17,36 @@ Checklist executável do MVP. Uma tarefa só recebe `[x]` depois de implementada
 
 ### 1.1 Repositório e scaffold
 
-- [ ] Inicializar o repositório Git sem alterar arquivos externos ao Pacebit.
-- [ ] Criar o projeto WXT com React, TypeScript e pnpm.
-- [ ] Confirmar que o build gera uma extensão Chrome Manifest V3 válida.
-- [ ] Ativar as opções estritas recomendadas do TypeScript.
-- [ ] Criar `.gitignore` para WXT, Node, artefatos, relatórios de teste e arquivos locais.
-- [ ] Configurar metadados iniciais do Pacebit no manifesto.
-- [ ] Criar o popup como única superfície principal do MVP.
-- [ ] Confirmar que não existem content scripts nem código de manipulação do Google Tasks.
-- [ ] Adicionar somente assets próprios necessários à extensão e ao pacote de submissão.
+- [x] Inicializar o repositório Git sem alterar arquivos externos ao Pacebit.
+- [x] Criar o projeto WXT com React, TypeScript e pnpm.
+- [x] Confirmar que o build gera uma extensão Chrome Manifest V3 válida.
+- [x] Ativar as opções estritas recomendadas do TypeScript.
+- [x] Criar `.gitignore` para WXT, Node, artefatos, relatórios de teste e arquivos locais.
+- [x] Configurar metadados iniciais do Pacebit no manifesto.
+- [x] Criar o popup como única superfície principal do MVP.
+- [x] Confirmar que não existem content scripts nem código de manipulação do Google Tasks.
+- [x] Adicionar somente assets próprios necessários à extensão e ao pacote de submissão.
+
+Validação de 2026-08-28: instalação com lockfile imutável, `wxt prepare`, TypeScript e build
+Chrome MV3 aprovados. Manifesto e fontes confirmaram popup único, opções estritas, metadados,
+ícones próprios e ausência de background e content scripts. Smoke manual no Chrome confirmou a
+extensão 0.1.0 instalada com o ID `jkpogflkipedlninnnplenlajoofkkfp`, ícone do Pacebit e popup
+renderizado com título e texto esperados, sem erro reportado.
 
 ### 1.2 Manifesto e acessos privilegiados
 
-- [ ] Configurar em `wxt.config.ts` somente as permissões `identity` e `storage`.
-- [ ] Configurar somente a host permission `https://tasks.googleapis.com/*`.
-- [ ] Configurar somente o scope OAuth `https://www.googleapis.com/auth/tasks`.
-- [ ] Configurar o client ID OAuth sem incorporar client secret.
-- [ ] Confirmar que o manifesto não solicita `tabs`, `activeTab`, `scripting`, `unlimitedStorage`, modo anônimo, alarmes ou acessos preventivos.
-- [ ] Documentar como configurar valores próprios de desenvolvimento sem versionar segredos ou credenciais locais desnecessárias.
+- [x] Configurar em `wxt.config.ts` somente as permissões `identity` e `storage`.
+- [x] Configurar somente a host permission `https://tasks.googleapis.com/*`.
+- [x] Configurar somente o scope OAuth `https://www.googleapis.com/auth/tasks`.
+- [x] Configurar o client ID OAuth sem incorporar client secret.
+- [x] Confirmar que o manifesto não solicita `tabs`, `activeTab`, `scripting`, `unlimitedStorage`, modo anônimo, alarmes ou acessos preventivos.
+- [x] Documentar como configurar valores próprios de desenvolvimento sem versionar segredos ou credenciais locais desnecessárias.
+
+Validação de 2026-08-28: `wxt prepare` e TypeScript aprovados sem credencial; build, ZIP
+e desenvolvimento recusaram client ID ausente ou inválido. Build MV3 com identificador sintético
+confirmou exatamente `identity`, `storage`, o host e o scope aprovados, modo anônimo desabilitado
+e ausência dos acessos proibidos. `.env.local`, `.env.example` e o repositório foram auditados.
+A credencial real e a chave pública foram incorporadas e validadas posteriormente na fase 4.1.
 
 ### 1.3 Scripts e qualidade
 
@@ -149,13 +161,19 @@ Checklist executável do MVP. Uma tarefa só recebe `[x]` depois de implementada
 
 ### 4.1 Configuração Google
 
-- [ ] Criar projeto Google Cloud próprio do Pacebit para o ambiente de distribuição.
-- [ ] Habilitar a Google Tasks API no projeto.
-- [ ] Definir um ID estável para a extensão distribuível.
-- [ ] Criar credencial OAuth do tipo extensão Chrome vinculada ao ID estável.
+- [x] Criar projeto Google Cloud próprio do Pacebit para o ambiente de distribuição.
+- [x] Habilitar a Google Tasks API no projeto.
+- [x] Definir um ID estável para a extensão distribuível.
+- [x] Criar credencial OAuth do tipo extensão Chrome vinculada ao ID estável.
 - [ ] Manter configurações de desenvolvimento e distribuição separadas quando necessário.
 - [ ] Configurar marca, audiência, tela de consentimento e scope usado pelo produto.
-- [ ] Confirmar que nenhum client secret, token ou credencial privada entra no repositório ou bundle.
+- [x] Confirmar que nenhum client secret, token ou credencial privada entra no repositório ou bundle.
+
+Validação de 2026-08-28: projeto Google Cloud e Google Tasks API habilitada confirmados pelo
+fluxo do console. A chave pública do item deriva o ID estável
+`jkpogflkipedlninnnplenlajoofkkfp`, que corresponde à credencial OAuth Chrome criada. O client ID
+real permanece no `.env.local` ignorado; `wxt prepare`, TypeScript e build MV3 foram aprovados, e
+repositório e bundle não contêm client secret, token, chave privada ou API key.
 
 ### 4.2 Autenticação
 
