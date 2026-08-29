@@ -1,3 +1,4 @@
+import { parseScheduledDate } from '../tasks/scheduled-date';
 import {
   type GoogleTasksApiResult,
   invalidGoogleTasksRequest,
@@ -112,7 +113,7 @@ function decodeTaskItem(value: unknown): GoogleTaskItem | null {
     !isNonEmptyValueField(value.position) ||
     !isTaskStatus(value.status) ||
     !isOptionalNonEmptyString(value.parent) ||
-    !isOptionalNonEmptyString(value.due) ||
+    !isOptionalScheduledDate(value.due) ||
     !isOptionalBoolean(value.deleted) ||
     !isOptionalBoolean(value.hidden) ||
     !isOptionalAssignment(value.assignmentInfo)
@@ -196,6 +197,10 @@ function isTaskStatus(value: unknown): value is GoogleTaskStatus {
 
 function isOptionalNonEmptyString(value: unknown): value is string | undefined {
   return value === undefined || isNonEmptyValueField(value);
+}
+
+function isOptionalScheduledDate(value: unknown): value is string | undefined {
+  return value === undefined || (isNonEmptyValueField(value) && parseScheduledDate(value) !== null);
 }
 
 function isOptionalBoolean(value: unknown): value is boolean | undefined {

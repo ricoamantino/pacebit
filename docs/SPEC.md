@@ -290,24 +290,35 @@ conta Google, Storage ou chamada remota real.
 
 ### 4.4 Listas e tarefas
 
-- [ ] Paginar `tasklists.list` até consumir todos os `nextPageToken`.
-- [ ] Paginar `tasks.list` de cada lista até consumir todos os `nextPageToken`.
+- [x] Paginar `tasklists.list` até consumir todos os `nextPageToken`.
+- [x] Paginar `tasks.list` de cada lista até consumir todos os `nextPageToken`.
 - [x] Enviar explicitamente `showCompleted=false`, `showDeleted=false`, `showHidden=false` e `showAssigned=false`.
 - [x] Ler os campos necessários para IDs, títulos, lista, data agendada, hierarquia, posição e estado.
-- [ ] Incluir subtarefas próprias como tarefas elegíveis independentes.
-- [ ] Excluir tarefas concluídas, excluídas, ocultas e atribuídas por Docs ou Chat Spaces.
-- [ ] Não aplicar limite arbitrário nem declarar resultado parcial como completo.
-- [ ] Representar falha por lista e permitir nova tentativa sem apagar resultados locais válidos.
+- [x] Incluir subtarefas próprias como tarefas elegíveis independentes.
+- [x] Excluir tarefas concluídas, excluídas, ocultas e atribuídas por Docs ou Chat Spaces.
+- [x] Não aplicar limite arbitrário nem declarar resultado parcial como completo.
+- [x] Representar falha por lista e permitir nova tentativa sem apagar resultados locais válidos.
+
+Validação de 2026-08-29: carregador sequencial aprovado em 17 testes novos, dentro de 156 testes
+unitários totais. Todas as páginas de listas e tarefas foram consumidas na ordem dos tokens, sem
+limite arbitrário. Subtarefas permaneceram elegíveis, enquanto tarefas concluídas, excluídas,
+ocultas e atribuídas foram removidas defensivamente. Falhas por lista preservaram páginas válidas
+e permitiram continuar ou repetir somente a lista afetada; autorização, cancelamento, rede e limite
+interromperam novas requisições mantendo o catálogo parcial e as listas pendentes. Tokens repetidos
+e datas agendadas inválidas foram rejeitados sem loop. `pnpm check`, `pnpm test:e2e` (2 testes),
+`pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e `git diff --check` passaram.
+O manifesto MV3 permaneceu somente com `identity`, `storage` e o host aprovado, sem background ou
+content script.
 
 ### 4.5 Testes da integração controlada
 
 - [x] Testar autenticação sem interação quando o token estiver disponível.
 - [ ] Testar autorização interativa somente depois da ação do usuário.
 - [x] Testar token inválido, remoção do cache e nova tentativa.
-- [ ] Testar paginação de listas e tarefas em uma e várias páginas.
+- [x] Testar paginação de listas e tarefas em uma e várias páginas.
 - [x] Testar presença dos quatro filtros explícitos e dos campos parciais necessários.
-- [ ] Testar lista vazia, subtarefa, tarefa atribuída, resposta inválida, falhas HTTP e rede.
-- [ ] Testar carregamento parcial sem apresentá-lo como completo.
+- [x] Testar lista vazia, subtarefa, tarefa atribuída, resposta inválida, falhas HTTP e rede.
+- [x] Testar carregamento parcial sem apresentá-lo como completo.
 - [x] Manter os testes comuns independentes de uma conta Google e de chamadas reais.
 
 ## 5. Popup e apresentação das tarefas
