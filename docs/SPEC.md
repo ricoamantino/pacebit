@@ -313,7 +313,7 @@ content script.
 ### 4.5 Testes da integração controlada
 
 - [x] Testar autenticação sem interação quando o token estiver disponível.
-- [ ] Testar autorização interativa somente depois da ação do usuário.
+- [x] Testar autorização interativa somente depois da ação do usuário.
 - [x] Testar token inválido, remoção do cache e nova tentativa.
 - [x] Testar paginação de listas e tarefas em uma e várias páginas.
 - [x] Testar presença dos quatro filtros explícitos e dos campos parciais necessários.
@@ -325,12 +325,23 @@ content script.
 
 ### 5.1 Estrutura e estados
 
-- [ ] Criar a composição principal do popup em português do Brasil.
-- [ ] Exibir estado desconectado com explicação e ação contextual para conectar.
-- [ ] Exibir estados distintos de conectando, carregando tarefas, vazio real, resultado parcial, offline e erro recuperável.
-- [ ] Manter sessão ativa, total do dia e histórico acessíveis quando o Google estiver indisponível.
-- [ ] Oferecer nova tentativa para autenticação e carregamento sem recarregar ou apagar dados locais.
-- [ ] Não expor tokens, URLs internas, payloads REST, stack traces ou detalhes de implementação.
+- [x] Criar a composição principal do popup em português do Brasil.
+- [x] Exibir estado desconectado com explicação e ação contextual para conectar.
+- [x] Exibir estados distintos de conectando, carregando tarefas, vazio real, resultado parcial, offline e erro recuperável.
+- [x] Manter sessão ativa, total do dia e histórico acessíveis quando o Google estiver indisponível.
+- [x] Oferecer nova tentativa para autenticação e carregamento sem recarregar ou apagar dados locais.
+- [x] Não expor tokens, URLs internas, payloads REST, stack traces ou detalhes de implementação.
+
+Validação de 2026-08-29: popup funcional aprovado em 16 testes de interface, dentro de 171 testes
+unitários totais. Foram comprovados autorização silenciosa, gesto explícito antes da autorização
+interativa, conexão, carregamento, vazio real, resultado parcial, indisponibilidade, erro e retry
+sem apagar tarefas já carregadas. Um `401` removeu e renovou o token uma única vez, operações
+obsoletas foram canceladas e a remontagem em `StrictMode` limpou observadores e intervalos. Sessão
+ativa, total diário e resumo do histórico permaneceram visíveis diante de falha Google ou Storage,
+com atualização do relógio apenas na apresentação e mensagens sanitizadas. `pnpm check`,
+`pnpm test:e2e` (2 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e
+`git diff --check` passaram. Inspeção visual no Chromium confirmou a composição compacta, e o
+manifesto permaneceu sem novos acessos, background ou content script.
 
 ### 5.2 Priorização e carregamento
 
@@ -355,7 +366,7 @@ content script.
 
 ### 5.4 Testes do popup
 
-- [ ] Testar os estados desconectado, conectando, carregando, vazio, parcial, offline e erro recuperável com Testing Library.
+- [x] Testar os estados desconectado, conectando, carregando, vazio, parcial, offline e erro recuperável com Testing Library.
 - [ ] Testar a prioridade completa e o desempate estável das tarefas.
 - [ ] Testar listas com títulos iguais, subtarefas e carregamento de novas páginas.
 - [ ] Testar que resultado parcial nunca é comunicado como completo.
