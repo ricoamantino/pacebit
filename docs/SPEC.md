@@ -117,13 +117,19 @@ dependências de React, Chrome, WXT e Google Tasks.
 
 ### 2.3 Cálculos temporais
 
-- [ ] Calcular duração somente pela soma das interseções dos períodos executados.
-- [ ] Excluir integralmente os intervalos pausados.
-- [ ] Calcular a parcela de um período que pertence a um dia civil local.
-- [ ] Incluir no cálculo a parcela corrente de uma sessão em execução sem persistir atualizações por segundo.
-- [ ] Recalcular corretamente após passagem da meia-noite.
-- [ ] Garantir que mudança de fuso não altere durações registradas e apenas redefina apresentação e pertencimento ao dia local.
-- [ ] Tratar datas agendadas do Google Tasks como datas civis, sem interpretar horário do campo `due`.
+- [x] Calcular duração somente pela soma das interseções dos períodos executados.
+- [x] Excluir integralmente os intervalos pausados.
+- [x] Calcular a parcela de um período que pertence a um dia civil local.
+- [x] Incluir no cálculo a parcela corrente de uma sessão em execução sem persistir atualizações por segundo.
+- [x] Recalcular corretamente após passagem da meia-noite.
+- [x] Garantir que mudança de fuso não altere durações registradas e apenas redefina apresentação e pertencimento ao dia local.
+- [x] Tratar datas agendadas do Google Tasks como datas civis, sem interpretar horário do campo `due`.
+
+Validação de 2026-08-29: `pnpm check`, `pnpm build` e `git diff --check` concluídos, com 18 novos
+testes temporais e 36 testes totais aprovados. Foram verificados duração e pausas, histórico e
+sessões ativas, intervalos semiabertos na meia-noite, dias locais de 23 e 25 horas, recálculo após
+mudança de dia e fuso e datas civis do Google Tasks sem conversão do horário de `due`. Inspeção
+confirmou ausência de relógio interno, contador, cache temporal ou nova dependência.
 
 ### 2.4 Testes do domínio
 
@@ -133,9 +139,9 @@ dependências de React, Chrome, WXT e Google Tasks.
 - [x] Testar finalização em execução e em pausa.
 - [x] Testar cancelamento com e sem tempo registrado.
 - [x] Testar sessão de duração muito curta.
-- [ ] Testar períodos que começam ou terminam nos limites da meia-noite.
-- [ ] Testar total diário com sessão ativa, pausada e concluída.
-- [ ] Testar mudança de dia e mudança de fuso horário com relógio controlado.
+- [x] Testar períodos que começam ou terminam nos limites da meia-noite.
+- [x] Testar total diário com sessão ativa, pausada e concluída.
+- [x] Testar mudança de dia e mudança de fuso horário com relógio controlado.
 
 ## 3. Persistência e concorrência
 

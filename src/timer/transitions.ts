@@ -1,3 +1,4 @@
+import { calculateExecutionDuration } from './duration';
 import type {
   ActiveSession,
   CompletedSession,
@@ -139,10 +140,7 @@ export function finishSession(
     startedAtMs: current.startedAtMs,
     endedAtMs: atMs,
     periods,
-    durationMs: periods.reduce(
-      (durationMs, period) => durationMs + period.endedAtMs - period.startedAtMs,
-      0,
-    ),
+    durationMs: calculateExecutionDuration(periods),
   });
 }
 
