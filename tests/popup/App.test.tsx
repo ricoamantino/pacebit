@@ -286,6 +286,242 @@ describe('App', () => {
     }
   });
 
+  it('soma no popup somente as parcelas executadas dentro do dia local atual', () => {
+    const nowMs = new Date(2026, 7, 30, 0, 20).getTime();
+    const crossingMidnight = completedHistorySession('crossing-midnight', {
+      startedAtMs: new Date(2026, 7, 29, 23, 50).getTime(),
+      endedAtMs: new Date(2026, 7, 30, 0, 10).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 29, 23, 50).getTime(),
+          endedAtMs: new Date(2026, 7, 30, 0, 10).getTime(),
+        },
+      ],
+      durationMs: 20 * 60_000,
+    });
+    const today = completedHistorySession('today', {
+      startedAtMs: new Date(2026, 7, 30, 0, 12).getTime(),
+      endedAtMs: new Date(2026, 7, 30, 0, 17).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 30, 0, 12).getTime(),
+          endedAtMs: new Date(2026, 7, 30, 0, 17).getTime(),
+        },
+      ],
+      durationMs: 5 * 60_000,
+    });
+    const previousDay = completedHistorySession('previous-day', {
+      startedAtMs: new Date(2026, 7, 29, 10).getTime(),
+      endedAtMs: new Date(2026, 7, 29, 11).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 29, 10).getTime(),
+          endedAtMs: new Date(2026, 7, 29, 11).getTime(),
+        },
+      ],
+      durationMs: 60 * 60_000,
+    });
+    const activeSession = {
+      id: 'active-daily-total',
+      state: 'running' as const,
+      task: { id: 'active-task', title: 'Sessão ativa' },
+      taskList: { id: 'active-list', title: 'Trabalho' },
+      startedAtMs: new Date(2026, 7, 30, 0, 17).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 30, 0, 17).getTime(),
+          endedAtMs: new Date(2026, 7, 30, 0, 18).getTime(),
+        },
+      ],
+      runningSinceMs: new Date(2026, 7, 30, 0, 19).getTime(),
+    };
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState({
+        activeSession,
+        history: [previousDay, crossingMidnight, today],
+      }),
+      now: () => nowMs,
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:17:00');
+  });
+
+  it('atualiza durante execução, congela em pausa e preserva o total ao finalizar', async () => {
+    vi.useFakeTimers();
+    let nowMs = new Date(2026, 7, 30, 10, 0, 10).getTime();
+    const startedAtMs = nowMs - 10_000;
+    const timerState: StoredTimerState = {
+      activeSession: {
+        id: 'daily-flow',
+        state: 'running',
+        task: { id: 'task-daily-flow', title: 'Fluxo diário' },
+        taskList: { id: 'list-daily-flow', title: 'Trabalho' },
+        startedAtMs,
+        periods: [],
+        runningSinceMs: startedAtMs,
+      },
+      history: [],
+    };
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(timerState),
+      now: () => nowMs,
+    });
+
+    try {
+      render(<App dependencies={dependencies} />);
+      const total = screen.getByRole('region', { name: 'Total de hoje' });
+      expect(total).toHaveTextContent('00:00:10');
+
+      nowMs += 2_000;
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(total).toHaveTextContent('00:00:12');
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('button', { name: 'Retomar' })).toBeVisible();
+      expect(total).toHaveTextContent('00:00:12');
+
+      nowMs += 5_000;
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(total).toHaveTextContent('00:00:12');
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Retomar' }));
+        await Promise.resolve();
+      });
+      nowMs += 3_000;
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(total).toHaveTextContent('00:00:15');
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+        await Promise.resolve();
+      });
+      expect(total).toHaveTextContent('00:00:15');
+      expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1 sessão');
+      expect(screen.getByText('Sessão finalizada e salva no histórico.')).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('recalcula o total ao atravessar a meia-noite e ao remontar o popup', () => {
+    vi.useFakeTimers();
+    let nowMs = new Date(2026, 7, 29, 23, 59).getTime();
+    const startedAtMs = new Date(2026, 7, 29, 23, 50).getTime();
+    const timerState: StoredTimerState = {
+      activeSession: {
+        id: 'midnight-session',
+        state: 'running',
+        task: { id: 'midnight-task', title: 'Virada do dia' },
+        taskList: { id: 'midnight-list', title: 'Trabalho' },
+        startedAtMs,
+        periods: [],
+        runningSinceMs: startedAtMs,
+      },
+      history: [],
+    };
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(timerState),
+      now: () => nowMs,
+    });
+
+    try {
+      const view = render(<App dependencies={dependencies} />);
+      expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:09:00');
+
+      nowMs = new Date(2026, 7, 30, 0, 5).getTime();
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:05:00');
+
+      view.unmount();
+      nowMs = new Date(2026, 7, 30, 0, 7).getTime();
+      render(<App dependencies={dependencies} />);
+      expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:07:00');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('recalcula pertencimento ao dia após mudança de fuso sem alterar o histórico', () => {
+    vi.useFakeTimers();
+    const originalTimeZone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    let nowMs = Date.parse('2026-08-29T03:00:00Z');
+    const completed = completedHistorySession('timezone', {
+      startedAtMs: Date.parse('2026-08-29T00:30:00Z'),
+      endedAtMs: Date.parse('2026-08-29T02:30:00Z'),
+      periods: [
+        {
+          startedAtMs: Date.parse('2026-08-29T00:30:00Z'),
+          endedAtMs: Date.parse('2026-08-29T02:30:00Z'),
+        },
+      ],
+      durationMs: 2 * 60 * 60_000,
+    });
+    const timerState: StoredTimerState = { activeSession: null, history: [completed] };
+    const snapshot = structuredClone(timerState);
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(timerState),
+      now: () => nowMs,
+    });
+
+    try {
+      render(<App dependencies={dependencies} />);
+      const total = screen.getByRole('region', { name: 'Total de hoje' });
+      expect(total).toHaveTextContent('02:00:00');
+
+      process.env.TZ = 'America/Sao_Paulo';
+      nowMs += 1_000;
+      act(() => vi.advanceTimersByTime(1_000));
+
+      expect(total).toHaveTextContent('00:00:00');
+      expect(timerState).toEqual(snapshot);
+    } finally {
+      if (originalTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimeZone;
+      }
+      vi.useRealTimers();
+    }
+  });
+
+  it('mantém o fluxo local completo quando o carregamento remoto falha', async () => {
+    const timerState = activeTimerState();
+    const snapshot = structuredClone(timerState);
+    const loadTasksCatalog = vi.fn().mockResolvedValue({
+      status: 'failed',
+      reason: 'unavailable',
+      taskLists: [],
+    });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('offline-token'),
+      loadTasksCatalog,
+      observeTimerState: observeReadyTimerState(timerState),
+    });
+
+    render(<App dependencies={dependencies} />);
+    expect(await screen.findByText('Não foi possível acessar o Google Tasks agora.')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }));
+    expect(await screen.findByRole('button', { name: 'Retomar' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Retomar' }));
+    expect(await screen.findByRole('button', { name: 'Pausar' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+
+    expect(await screen.findByText('Sessão finalizada e salva no histórico.')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:00:07');
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2 sessões');
+    expect(screen.getByText('Não foi possível acessar o Google Tasks agora.')).toBeVisible();
+    expect(loadTasksCatalog).toHaveBeenCalledOnce();
+    expect(timerState).toEqual(snapshot);
+  });
+
   it.each([
     ['inválido', { status: 'invalid' } satisfies StoredTimerStateObservation],
     [

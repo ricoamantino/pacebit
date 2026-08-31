@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { formatDuration } from '../../entrypoints/popup/time-format';
 import type { CompletedSession, RunningSession } from '../../src/timer/session';
 import { expect, test } from './fixtures';
 
@@ -18,25 +19,63 @@ interface ExtensionGlobal {
 }
 
 test('pausa, retoma e finaliza uma sessão usando o armazenamento real da extensão', async ({
+  context,
   page,
 }) => {
-  const session = createRunningSession();
-  await seedTimerState(page, session);
+  const nowMs = new Date(2026, 7, 30, 10, 0, 10).getTime();
+  await page.clock.install({ time: nowMs });
+  await page.clock.pauseAt(nowMs);
+  const session = createRunningSession(nowMs);
+  const existingHistory = createOfflineHistory(nowMs);
+  await seedTimerState(page, session, [existingHistory]);
+
+  const total = page.getByRole('region', { name: 'Total de hoje' });
+  await expect(page.getByRole('button', { name: 'Conectar com Google' })).toBeVisible();
+  await expect(total).toContainText('00:00:07');
 
   await page.getByRole('button', { name: 'Pausar' }).click();
   await expect(page.getByRole('button', { name: 'Retomar' })).toBeVisible();
+  await expect(total).toContainText('00:00:07');
+
+  await page.clock.fastForward(5_000);
+  await expect(total).toContainText('00:00:07');
 
   await page.getByRole('button', { name: 'Retomar' }).click();
   await expect(page.getByRole('button', { name: 'Pausar' })).toBeVisible();
+  await page.clock.fastForward(3_000);
+  await expect(total).toContainText('00:00:10');
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Pausar' })).toBeVisible();
+  await expect(page.getByText('Tarefa local controlada')).toBeVisible();
+  await expect(total).toContainText('00:00:10');
 
   await page.getByRole('button', { name: 'Finalizar sessão' }).click();
   await expect(page.getByText('Sessão finalizada e salva no histórico.')).toBeVisible();
   await expect(page.getByText('Nenhuma sessão em andamento.')).toBeVisible();
+  await expect(total).toContainText('00:00:10');
 
   const stored = await readTimerStorage(page);
   expect(stored.activeSession).toBeUndefined();
-  expect(stored.history).toHaveLength(1);
-  expect(stored.history[0]).toMatchObject({ id: session.id, task: session.task });
+  expect(stored.history).toHaveLength(2);
+  expect(stored.history.filter((completed) => completed.id === session.id)).toHaveLength(1);
+  expect(stored.history.find((completed) => completed.id === session.id)).toMatchObject({
+    id: session.id,
+    task: session.task,
+    durationMs: 8_000,
+  });
+
+  await page.close();
+  const reopenedPage = await context.newPage();
+  await reopenedPage.clock.install({ time: nowMs + 8_000 });
+  await reopenedPage.clock.pauseAt(nowMs + 8_000);
+  await reopenedPage.goto(POPUP_URL);
+
+  await expect(reopenedPage.getByText('Nenhuma sessão em andamento.')).toBeVisible();
+  await expect(reopenedPage.getByRole('region', { name: 'Histórico' })).toContainText('2 sessões');
+  await expect(reopenedPage.getByRole('region', { name: 'Total de hoje' })).toContainText(
+    formatDuration(existingHistory.durationMs + 8_000),
+  );
 });
 
 test('cancela diretamente sem criar histórico', async ({ page }) => {
@@ -92,8 +131,8 @@ test('apresenta histórico persistido em ordem e lotes de 20', async ({ page }) 
   );
 });
 
-function createRunningSession(): RunningSession {
-  const startedAtMs = Date.now() - 5_000;
+function createRunningSession(nowMs: number = Date.now()): RunningSession {
+  const startedAtMs = nowMs - 5_000;
 
   return {
     id: 'e2e-session',
@@ -103,6 +142,21 @@ function createRunningSession(): RunningSession {
     startedAtMs,
     periods: [],
     runningSinceMs: startedAtMs,
+  };
+}
+
+function createOfflineHistory(nowMs: number): CompletedSession {
+  const startedAtMs = nowMs - 9_000;
+  const endedAtMs = nowMs - 7_000;
+
+  return {
+    id: 'e2e-existing-history',
+    task: { id: 'e2e-existing-task', title: 'Histórico anterior' },
+    taskList: { id: 'e2e-list', title: 'Trabalho' },
+    startedAtMs,
+    endedAtMs,
+    periods: [{ startedAtMs, endedAtMs }],
+    durationMs: 2_000,
   };
 }
 
@@ -121,15 +175,22 @@ function createCompletedSession(index: number): CompletedSession {
   };
 }
 
-async function seedTimerState(page: Page, session: RunningSession) {
+async function seedTimerState(
+  page: Page,
+  session: RunningSession,
+  history: readonly CompletedSession[] = [],
+) {
   await page.goto(POPUP_URL);
-  await page.evaluate(async (activeSession) => {
-    const extension = globalThis as typeof globalThis & ExtensionGlobal;
-    await extension.chrome.storage.local.set({
-      'active-session': activeSession,
-      'session-history': [],
-    });
-  }, session);
+  await page.evaluate(
+    async ({ activeSession, completedSessions }) => {
+      const extension = globalThis as typeof globalThis & ExtensionGlobal;
+      await extension.chrome.storage.local.set({
+        'active-session': activeSession,
+        'session-history': completedSessions,
+      });
+    },
+    { activeSession: session, completedSessions: history },
+  );
   await page.reload();
 }
 
@@ -150,7 +211,7 @@ async function readTimerStorage(page: Page) {
 
     return {
       activeSession: stored['active-session'],
-      history: stored['session-history'] as unknown[],
+      history: stored['session-history'] as CompletedSession[],
     };
   });
 }

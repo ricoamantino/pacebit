@@ -217,7 +217,7 @@ vulnerabilidades.
 - [x] Testar quota excedida sem perda silenciosa de estado.
 - [x] Testar início, pausa, retomada, finalização e cancelamento a partir de duas instâncias.
 - [x] Testar que exatamente um comando concorrente vence e o outro recebe conflito recuperável.
-- [ ] Testar que nenhuma falha remota do Google altera dados locais válidos.
+- [x] Testar que nenhuma falha remota do Google altera dados locais válidos.
 
 ## 4. Google Cloud, OAuth e Tasks API
 
@@ -461,12 +461,25 @@ permaneceu sem novos acessos, background ou content script.
 
 ### 6.4 Total diário
 
-- [ ] Exibir o total efetivamente executado no dia civil local atual.
-- [ ] Somar sessões concluídas que interceptem o dia atual.
-- [ ] Somar a parcela transcorrida da sessão ativa em execução.
-- [ ] Excluir pausas e a parte dos períodos situada fora do dia atual.
-- [ ] Recalcular quando o relógio atravessar a meia-noite e quando o popup for reaberto.
-- [ ] Recalcular o pertencimento ao dia quando o fuso local mudar sem alterar durações históricas.
+- [x] Exibir o total efetivamente executado no dia civil local atual.
+- [x] Somar sessões concluídas que interceptem o dia atual.
+- [x] Somar a parcela transcorrida da sessão ativa em execução.
+- [x] Excluir pausas e a parte dos períodos situada fora do dia atual.
+- [x] Recalcular quando o relógio atravessar a meia-noite e quando o popup for reaberto.
+- [x] Recalcular o pertencimento ao dia quando o fuso local mudar sem alterar durações históricas.
+
+Validação de 2026-08-31: total diário e continuidade local aprovados em cinco testes de interface
+novos, dentro de 227 testes unitários totais, e em um fluxo Playwright ampliado, dentro de seis
+testes E2E. O popup somou apenas as parcelas históricas do dia local, incluiu períodos fechados e
+o período corrente, congelou o total durante pausa e o preservou após retomada e finalização sem
+duplicidade. Relógio controlado comprovou passagem da meia-noite, remontagem e mudança de fuso sem
+alterar timestamps, períodos ou duração persistida. Uma falha explícita da integração Google não
+modificou o estado local nem impediu pausa, retomada e finalização. No Chromium, uma sessão e um
+histórico semeados em `chrome.storage.local` permaneceram corretos durante pausa, avanço do
+relógio, retomada, recarga, finalização e reabertura sem autorização Google. `pnpm check`,
+`pnpm test:e2e` (6 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e
+`git diff --check` passaram. O manifesto manteve somente `identity`, `storage` e o host da Google
+Tasks API, sem background ou content script.
 
 ### 6.5 Testes do fluxo local
 
@@ -474,8 +487,8 @@ permaneceu sem novos acessos, background ou content script.
 - [x] Testar pausa, retomada, finalização e cancelamento pela interface.
 - [x] Testar recuperação visual de sessão em execução e pausada.
 - [x] Testar histórico, snapshots e ordenação recente.
-- [ ] Testar total diário durante execução, pausa e depois da finalização.
-- [ ] Testar continuidade completa do fluxo local sem acesso ao Google.
+- [x] Testar total diário durante execução, pausa e depois da finalização.
+- [x] Testar continuidade completa do fluxo local sem acesso ao Google.
 
 ## 7. Conclusão no Google Tasks
 
