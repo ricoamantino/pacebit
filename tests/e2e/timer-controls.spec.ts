@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { RunningSession } from '../../src/timer/session';
+import type { CompletedSession, RunningSession } from '../../src/timer/session';
 import { expect, test } from './fixtures';
 
 const EXTENSION_ID = 'jkpogflkipedlninnnplenlajoofkkfp';
@@ -10,6 +10,7 @@ interface ExtensionGlobal {
     readonly storage: {
       readonly local: {
         get(keys: readonly string[]): Promise<Record<string, unknown>>;
+        remove(keys: string | readonly string[]): Promise<void>;
         set(items: Record<string, unknown>): Promise<void>;
       };
     };
@@ -70,6 +71,27 @@ test('reflete em outra página uma transição persistida sem recarregar', async
   await expect(secondPage.getByText(/Trabalho · Pausada/)).toBeVisible();
 });
 
+test('apresenta histórico persistido em ordem e lotes de 20', async ({ page }) => {
+  const history = Array.from({ length: 21 }, (_, index) => createCompletedSession(index));
+  await seedHistory(page, history);
+
+  const historyRegion = page.getByRole('region', { name: 'Histórico' });
+  const sessions = historyRegion.getByRole('listitem');
+  await expect(sessions).toHaveCount(20);
+  await expect(sessions.first()).toContainText('Sessão 20');
+  await expect(sessions.first()).toContainText('Lista local');
+  await expect(sessions.first()).toContainText('Duração · 00:00:05');
+  await expect(historyRegion.getByText('Sessão 0')).toHaveCount(0);
+
+  await historyRegion.getByRole('button', { name: 'Mostrar mais 20 sessões' }).click();
+
+  await expect(sessions).toHaveCount(21);
+  await expect(sessions.last()).toContainText('Sessão 0');
+  await expect(historyRegion.getByRole('button', { name: 'Mostrar mais 20 sessões' })).toHaveCount(
+    0,
+  );
+});
+
 function createRunningSession(): RunningSession {
   const startedAtMs = Date.now() - 5_000;
 
@@ -84,6 +106,21 @@ function createRunningSession(): RunningSession {
   };
 }
 
+function createCompletedSession(index: number): CompletedSession {
+  const startedAtMs = new Date(2026, 7, 29, 10, index).getTime();
+  const endedAtMs = startedAtMs + 5_000;
+
+  return {
+    id: `e2e-history-${index.toString().padStart(2, '0')}`,
+    task: { id: `e2e-task-${index}`, title: `Sessão ${index}` },
+    taskList: { id: 'e2e-list', title: 'Lista local' },
+    startedAtMs,
+    endedAtMs,
+    periods: [{ startedAtMs, endedAtMs }],
+    durationMs: 5_000,
+  };
+}
+
 async function seedTimerState(page: Page, session: RunningSession) {
   await page.goto(POPUP_URL);
   await page.evaluate(async (activeSession) => {
@@ -93,6 +130,16 @@ async function seedTimerState(page: Page, session: RunningSession) {
       'session-history': [],
     });
   }, session);
+  await page.reload();
+}
+
+async function seedHistory(page: Page, history: readonly CompletedSession[]) {
+  await page.goto(POPUP_URL);
+  await page.evaluate(async (completedSessions) => {
+    const extension = globalThis as typeof globalThis & ExtensionGlobal;
+    await extension.chrome.storage.local.remove('active-session');
+    await extension.chrome.storage.local.set({ 'session-history': completedSessions });
+  }, history);
   await page.reload();
 }
 

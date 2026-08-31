@@ -440,12 +440,24 @@ host da Google Tasks API, sem background ou content script.
 
 ### 6.3 Histórico
 
-- [ ] Exibir sessões concluídas da mais recente para a mais antiga.
-- [ ] Exibir tarefa, lista, horário e duração de cada sessão.
-- [ ] Usar snapshots históricos mesmo quando tarefa ou lista não estiverem mais disponíveis.
-- [ ] Manter cada registro imutável no MVP.
-- [ ] Não oferecer edição ou exclusão de histórico.
-- [ ] Manter o histórico disponível offline.
+- [x] Exibir sessões concluídas da mais recente para a mais antiga.
+- [x] Exibir tarefa, lista, horário e duração de cada sessão.
+- [x] Usar snapshots históricos mesmo quando tarefa ou lista não estiverem mais disponíveis.
+- [x] Manter cada registro imutável no MVP.
+- [x] Não oferecer edição ou exclusão de histórico.
+- [x] Manter o histórico disponível offline.
+
+Validação de 2026-08-29: histórico local detalhado aprovado em nove testes unitários novos, dentro
+de 222 testes totais, e em um novo fluxo Playwright, dentro de seis testes E2E. A apresentação
+ordenou uma cópia dos registros por conclusão, início e ID, preservou snapshots e dados remotos
+como texto, formatou intervalos no fuso local e manteve a duração executada independente das
+pausas. Estados vazio, indisponível e preservado após falha foram distinguidos. Lotes transitórios
+de 20 registros reiniciaram na remontagem, e finalização, observação entre instâncias e falha do
+Google atualizaram ou preservaram a lista sem edição ou exclusão. O Chromium carregou 21 registros
+diretamente de `chrome.storage.local`, confirmou os 20 mais recentes e tornou o restante acessível
+pelo controle de expansão. `pnpm check`, `pnpm test:e2e` (6 testes), `pnpm build`,
+`pnpm audit --prod` (sem vulnerabilidades conhecidas) e `git diff --check` passaram. O manifesto
+permaneceu sem novos acessos, background ou content script.
 
 ### 6.4 Total diário
 
@@ -461,7 +473,7 @@ host da Google Tasks API, sem background ou content script.
 - [x] Testar seleção, início e bloqueio de segunda sessão pela interface.
 - [x] Testar pausa, retomada, finalização e cancelamento pela interface.
 - [x] Testar recuperação visual de sessão em execução e pausada.
-- [ ] Testar histórico, snapshots e ordenação recente.
+- [x] Testar histórico, snapshots e ordenação recente.
 - [ ] Testar total diário durante execução, pausa e depois da finalização.
 - [ ] Testar continuidade completa do fluxo local sem acesso ao Google.
 

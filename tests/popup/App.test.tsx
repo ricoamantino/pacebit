@@ -13,6 +13,7 @@ import type {
   StoredTimerState,
   StoredTimerStateObservation,
 } from '../../src/storage/session-storage';
+import type { CompletedSession } from '../../src/timer/session';
 import {
   cancelSession,
   finishSession,
@@ -247,6 +248,9 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: 'Sessão atual' })).toHaveTextContent('00:00:05');
     expect(screen.getByRole('region', { name: 'Total de hoje' })).toHaveTextContent('00:00:07');
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent(
+      'Revisar documento',
+    );
     expect(screen.getByRole('button', { name: 'Pausar' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Finalizar sessão' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Cancelar sessão' })).toBeEnabled();
@@ -323,6 +327,153 @@ describe('App', () => {
     expect(await screen.findByText('Não foi possível atualizar os dados locais.')).toBeVisible();
     expect(screen.getByText('Preparar relatório')).toBeVisible();
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
+    expect(screen.getByText('Exibindo o último histórico local disponível.')).toBeVisible();
+  });
+
+  it('distingue histórico vazio de histórico indisponível', async () => {
+    const emptyView = render(<App dependencies={createDependencies()} />);
+
+    expect(await screen.findByText('Nenhuma sessão concluída neste perfil.')).toBeVisible();
+    emptyView.unmount();
+
+    render(
+      <App
+        dependencies={createDependencies({
+          observeTimerState: (listener) => {
+            listener({ status: 'invalid' });
+            return () => {};
+          },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText('Histórico indisponível.')).toBeVisible();
+  });
+
+  it('apresenta snapshots históricos ordenados com intervalo, duração e fallbacks', async () => {
+    const older = completedHistorySession('older', {
+      task: { id: 'same-remote-task', title: '' },
+      taskList: { id: 'old-list', title: '' },
+      startedAtMs: new Date(2026, 7, 29, 23, 50).getTime(),
+      endedAtMs: new Date(2026, 7, 30, 0, 20).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 29, 23, 50).getTime(),
+          endedAtMs: new Date(2026, 7, 29, 23, 50).getTime(),
+        },
+      ],
+      durationMs: 0,
+    });
+    const newer = completedHistorySession('newer', {
+      task: { id: 'other-task', title: '<img src=x onerror=alert(1)>' },
+      taskList: { id: 'other-list', title: '<script>lista</script>' },
+      startedAtMs: new Date(2026, 7, 30, 14, 30).getTime(),
+      endedAtMs: new Date(2026, 7, 30, 15, 15).getTime(),
+      periods: [
+        {
+          startedAtMs: new Date(2026, 7, 30, 14, 30).getTime(),
+          endedAtMs: new Date(2026, 7, 30, 15, 15).getTime(),
+        },
+      ],
+      durationMs: 45 * 60_000,
+    });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('token'),
+      observeTimerState: observeReadyTimerState({
+        activeSession: null,
+        history: [older, newer],
+      }),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'current-list', 'Lista atual', [
+            taskItem('same-remote-task', 'Título atual da API'),
+          ]),
+        ],
+      }),
+    });
+
+    render(<App dependencies={dependencies} />);
+
+    expect(await screen.findByText('Título atual da API')).toBeVisible();
+    const history = screen.getByRole('region', { name: 'Histórico' });
+    const items = within(history).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent('<img src=x onerror=alert(1)>');
+    expect(items[0]).toHaveTextContent('<script>lista</script>');
+    expect(items[0]).toHaveTextContent('30/08/2026 · 14:30–15:15');
+    expect(items[0]).toHaveTextContent('Duração · 00:45:00');
+    expect(items[1]).toHaveTextContent('Sem título');
+    expect(items[1]).toHaveTextContent('Lista sem título');
+    expect(items[1]).toHaveTextContent('29/08/2026 23:50 → 30/08/2026 00:20');
+    expect(items[1]).toHaveTextContent('Duração · 00:00:00');
+    expect(within(history).queryByText('Título atual da API')).not.toBeInTheDocument();
+    expect(history.querySelector('img')).toBeNull();
+    expect(history.querySelector('script')).toBeNull();
+    expect(
+      within(history).queryByRole('button', { name: /editar|excluir/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('mostra o histórico em lotes de 20 e reinicia o limite ao remontar', async () => {
+    const history = Array.from({ length: 45 }, (_, index) =>
+      completedHistorySession(`session-${index}`, {
+        task: { id: `task-${index}`, title: `Sessão ${index}` },
+        startedAtMs: index * 10_000,
+        endedAtMs: index * 10_000 + 5_000,
+        periods: [{ startedAtMs: index * 10_000, endedAtMs: index * 10_000 + 5_000 }],
+      }),
+    );
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState({ activeSession: null, history }),
+    });
+    const view = render(<App dependencies={dependencies} />);
+    const historyRegion = screen.getByRole('region', { name: 'Histórico' });
+
+    expect(within(historyRegion).getAllByRole('listitem')).toHaveLength(20);
+    expect(within(historyRegion).getByText('Sessão 44')).toBeVisible();
+    expect(within(historyRegion).queryByText('Sessão 24')).not.toBeInTheDocument();
+
+    fireEvent.click(within(historyRegion).getByRole('button', { name: 'Mostrar mais 20 sessões' }));
+    expect(within(historyRegion).getAllByRole('listitem')).toHaveLength(40);
+    fireEvent.click(within(historyRegion).getByRole('button', { name: 'Mostrar mais 20 sessões' }));
+    expect(within(historyRegion).getAllByRole('listitem')).toHaveLength(45);
+    expect(
+      within(historyRegion).queryByRole('button', { name: 'Mostrar mais 20 sessões' }),
+    ).not.toBeInTheDocument();
+
+    view.unmount();
+    render(<App dependencies={dependencies} />);
+    expect(
+      within(screen.getByRole('region', { name: 'Histórico' })).getAllByRole('listitem'),
+    ).toHaveLength(20);
+  });
+
+  it('atualiza o histórico quando outra instância persiste uma sessão', () => {
+    let notify: ((observation: StoredTimerStateObservation) => void) | undefined;
+    const dependencies = createDependencies({
+      observeTimerState: (listener) => {
+        notify = listener;
+        listener({ status: 'ready', value: EMPTY_TIMER_STATE });
+        return () => {};
+      },
+    });
+
+    render(<App dependencies={dependencies} />);
+    expect(screen.getByText('Nenhuma sessão concluída neste perfil.')).toBeVisible();
+
+    act(() =>
+      notify?.({
+        status: 'ready',
+        value: {
+          activeSession: null,
+          history: [completedHistorySession('observed')],
+        },
+      }),
+    );
+
+    expect(screen.getByText('Tarefa observed')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1 sessão');
   });
 
   it('apresenta tarefas progressivamente e mantém o catálogo anterior durante atualização', async () => {
@@ -861,6 +1012,9 @@ describe('App', () => {
       'Nenhuma sessão em andamento.',
     );
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent(
+      'Preparar relatório',
+    );
     expect(finishStoredSession).toHaveBeenCalledWith(timer.activeSession, NOW_MS);
   });
 
@@ -1297,6 +1451,25 @@ function activeTimerState(): StoredTimerState {
         durationMs: 2_000,
       },
     ],
+  };
+}
+
+function completedHistorySession(
+  id: string,
+  overrides: Partial<CompletedSession> = {},
+): CompletedSession {
+  const startedAtMs = 1_000;
+  const endedAtMs = 3_000;
+
+  return {
+    id,
+    task: { id: `task-${id}`, title: `Tarefa ${id}` },
+    taskList: { id: 'list-1', title: 'Trabalho' },
+    startedAtMs,
+    endedAtMs,
+    periods: [{ startedAtMs, endedAtMs }],
+    durationMs: endedAtMs - startedAtMs,
+    ...overrides,
   };
 }
 

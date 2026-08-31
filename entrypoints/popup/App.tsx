@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { CivilDate } from '../../src/tasks/scheduled-date';
 import type { PrioritizedGoogleTask, TaskPriorityGroup } from '../../src/tasks/task-priority';
+import type { CompletedSession } from '../../src/timer/session';
+import { formatDuration, formatSessionInterval } from './time-format';
 import {
   type PopupDependencies,
   type PopupGoogleState,
@@ -425,24 +427,71 @@ function LocalTotals({ state }: { readonly state: PopupLocalState }) {
   return (
     <section className="local-overview" aria-labelledby="totals-heading">
       <h2 id="totals-heading">Resumo local</h2>
-      <div className="summary-grid">
-        <SummaryCard id="daily-total-heading" title="Total de hoje">
-          <p className="summary-value">{summary ? formatDuration(summary.dailyTotalMs) : '—'}</p>
-          <p className="summary-detail">Tempo efetivamente registrado.</p>
-        </SummaryCard>
-
-        <SummaryCard id="history-heading" title="Histórico">
-          <p className="summary-value">{summary ? summary.historyCount : '—'}</p>
-          <p className="summary-detail">
-            {summary
-              ? summary.historyCount === 1
-                ? 'sessão concluída neste perfil'
-                : 'sessões concluídas neste perfil'
-              : 'Resumo local indisponível.'}
-          </p>
-        </SummaryCard>
-      </div>
+      <SummaryCard id="daily-total-heading" title="Total de hoje">
+        <p className="summary-value">{summary ? formatDuration(summary.dailyTotalMs) : '—'}</p>
+        <p className="summary-detail">Tempo efetivamente registrado.</p>
+      </SummaryCard>
+      <HistoryCard state={state} />
     </section>
+  );
+}
+
+const HISTORY_BATCH_SIZE = 20;
+
+function HistoryCard({ state }: { readonly state: PopupLocalState }) {
+  const [visibleCount, setVisibleCount] = useState(HISTORY_BATCH_SIZE);
+  const summary = state.status === 'loading' ? undefined : state.value;
+  const history = summary?.history ?? [];
+  const visibleHistory = history.slice(0, visibleCount);
+  const remainingCount = Math.max(0, history.length - visibleHistory.length);
+
+  return (
+    <section className="card history-card" aria-labelledby="history-heading">
+      <div className="section-heading-row">
+        <h3 id="history-heading">Histórico</h3>
+        {summary ? (
+          <span className="history-count">
+            {history.length} {history.length === 1 ? 'sessão' : 'sessões'}
+          </span>
+        ) : null}
+      </div>
+
+      {state.status === 'loading' ? <p>Carregando histórico…</p> : null}
+      {state.status === 'error' && !summary ? <p>Histórico indisponível.</p> : null}
+      {state.status === 'error' && summary ? (
+        <p className="history-warning" role="status">
+          Exibindo o último histórico local disponível.
+        </p>
+      ) : null}
+      {summary && history.length === 0 ? <p>Nenhuma sessão concluída neste perfil.</p> : null}
+      {visibleHistory.length > 0 ? (
+        <ol className="history-list" aria-label="Sessões concluídas">
+          {visibleHistory.map((session) => (
+            <HistoryItem session={session} key={session.id} />
+          ))}
+        </ol>
+      ) : null}
+      {remainingCount > 0 ? (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setVisibleCount((current) => current + HISTORY_BATCH_SIZE)}
+        >
+          Mostrar mais 20 sessões
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function HistoryItem({ session }: { readonly session: CompletedSession }) {
+  return (
+    <li className="history-item">
+      <p className="history-task-title">{session.task.title || 'Sem título'}</p>
+      <p className="history-list-title">{session.taskList.title || 'Lista sem título'}</p>
+      <p className="history-interval">{formatSessionInterval(session)}</p>
+      <p className="history-duration">Duração · {formatDuration(session.durationMs)}</p>
+    </li>
   );
 }
 
@@ -772,13 +821,4 @@ function connectionMessage(status: PopupGoogleState['status']): string {
     default:
       return 'Acesso ao Google autorizado.';
   }
-}
-
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return [hours, minutes, seconds].map((value) => value.toString().padStart(2, '0')).join(':');
 }

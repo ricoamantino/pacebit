@@ -28,7 +28,13 @@ import { getLocalCivilDate } from '../../src/tasks/scheduled-date';
 import { type PrioritizedGoogleTask, prioritizeGoogleTasks } from '../../src/tasks/task-priority';
 import { calculateDailyTotal } from '../../src/timer/daily-total';
 import { calculateActiveSessionDuration } from '../../src/timer/duration';
-import type { ActiveSession, DurationMs, TimestampMs } from '../../src/timer/session';
+import type {
+  ActiveSession,
+  CompletedSession,
+  DurationMs,
+  TimestampMs,
+} from '../../src/timer/session';
+import { orderCompletedSessionsByMostRecent } from '../../src/timer/session-history';
 import type { TransitionRejection } from '../../src/timer/transitions';
 
 export interface PopupDependencies {
@@ -73,7 +79,7 @@ export interface PopupLocalSummary {
   readonly activeDurationMs: DurationMs;
   readonly dailyTotalMs: DurationMs;
   readonly finalizationPending: boolean;
-  readonly historyCount: number;
+  readonly history: readonly CompletedSession[];
 }
 
 export interface PopupController {
@@ -349,6 +355,14 @@ export function usePopupController(
     return () => globalThis.clearInterval(interval);
   }, [dependencies]);
 
+  const orderedHistory = useMemo(
+    () =>
+      storedTimerState.status === 'loading' || !storedTimerState.value
+        ? []
+        : orderCompletedSessionsByMostRecent(storedTimerState.value.history),
+    [storedTimerState],
+  );
+
   const local = useMemo<PopupLocalState>(() => {
     if (storedTimerState.status === 'loading') {
       return { status: 'loading' };
@@ -358,12 +372,12 @@ export function usePopupController(
       return { status: 'error' };
     }
 
-    const summary = createLocalSummary(storedTimerState.value, nowMs);
+    const summary = createLocalSummary(storedTimerState.value, orderedHistory, nowMs);
 
     return storedTimerState.status === 'ready'
       ? { status: 'ready', value: summary }
       : { status: 'error', value: summary };
-  }, [nowMs, storedTimerState]);
+  }, [nowMs, orderedHistory, storedTimerState]);
 
   const prioritizedTasks = useMemo(
     () => prioritizeGoogleTasks(google.taskLists, getLocalCivilDate(nowMs)),
@@ -801,7 +815,11 @@ function countTasks(taskLists: readonly GoogleTaskListLoad[]): number {
   );
 }
 
-function createLocalSummary(state: StoredTimerState, nowMs: TimestampMs): PopupLocalSummary {
+function createLocalSummary(
+  state: StoredTimerState,
+  history: readonly CompletedSession[],
+  nowMs: TimestampMs,
+): PopupLocalSummary {
   const pendingCompletion = findPendingSessionCompletion(state);
 
   return {
@@ -815,6 +833,6 @@ function createLocalSummary(state: StoredTimerState, nowMs: TimestampMs): PopupL
       nowMs,
     }),
     finalizationPending: pendingCompletion !== null,
-    historyCount: state.history.length,
+    history,
   };
 }
