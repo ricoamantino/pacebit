@@ -1301,7 +1301,7 @@ describe('App', () => {
 
     fireEvent.click(within(completion).getByRole('button', { name: 'Concluir tarefa no Google' }));
 
-    expect(await within(completion).findByText('Tarefa concluída no Google Tasks.')).toBeVisible();
+    expect(await within(completion).findByText(/Tarefa concluída no Google Tasks/)).toBeVisible();
     expect(completeTask).toHaveBeenCalledOnce();
     expect(completeTask).toHaveBeenCalledWith(
       'completion-token',
@@ -1339,7 +1339,7 @@ describe('App', () => {
       status: 'success',
       value: { id: 'task-1', status: 'completed' },
     });
-    expect(await screen.findByText('Tarefa concluída no Google Tasks.')).toBeVisible();
+    expect(await screen.findByText(/Tarefa concluída no Google Tasks/)).toBeVisible();
   });
 
   it('não solicita autorização interativa quando a conclusão não tem token silencioso', async () => {
@@ -1354,19 +1354,51 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
 
     expect(
-      await screen.findByText(
-        'Não foi possível concluir a tarefa no Google. O tempo continua salvo.',
-      ),
+      await screen.findByText('Autorize novamente para concluir a tarefa. O tempo continua salvo.'),
     ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Autorizar e tentar novamente' })).toBeEnabled();
     expect(completeTask).not.toHaveBeenCalled();
     expect(dependencies.requestAuthorization).not.toHaveBeenCalled();
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
   });
 
   it.each([
-    ['falha', { status: 'failed', reason: 'unavailable' } as const],
-    ['cancelamento', { status: 'cancelled' } as const],
-  ])('preserva o histórico quando a conclusão remota termina em %s', async (_name, result) => {
+    [
+      'acesso negado',
+      { status: 'failed', reason: 'forbidden' } as const,
+      'O Google não permitiu concluir esta tarefa. O tempo continua salvo.',
+    ],
+    [
+      'limite de requisições',
+      { status: 'failed', reason: 'rate-limited' } as const,
+      'O Google está limitando novas solicitações. O tempo continua salvo; tente novamente.',
+    ],
+    [
+      'indisponibilidade',
+      { status: 'failed', reason: 'unavailable' } as const,
+      'O Google Tasks está indisponível agora. O tempo continua salvo; tente novamente.',
+    ],
+    [
+      'resposta inválida',
+      { status: 'failed', reason: 'invalid-response' } as const,
+      'Não foi possível confirmar a conclusão no Google. O tempo continua salvo; tente novamente.',
+    ],
+    [
+      'falha genérica',
+      { status: 'failed', reason: 'request-failed' } as const,
+      'Não foi possível confirmar a conclusão no Google. O tempo continua salvo; tente novamente.',
+    ],
+    [
+      'requisição inválida',
+      { status: 'failed', reason: 'invalid-request' } as const,
+      'Não foi possível confirmar a conclusão no Google. O tempo continua salvo; tente novamente.',
+    ],
+    [
+      'cancelamento',
+      { status: 'cancelled' } as const,
+      'O Google Tasks está indisponível agora. O tempo continua salvo; tente novamente.',
+    ],
+  ])('preserva o histórico diante de %s na conclusão remota', async (_name, result, message) => {
     const completeTask = vi.fn<PopupDependencies['completeTask']>().mockResolvedValue(result);
     const dependencies = createDependencies({
       getAuthorization: authorized('completion-token'),
@@ -1378,14 +1410,203 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
 
-    expect(
-      await screen.findByText(
-        'Não foi possível concluir a tarefa no Google. O tempo continua salvo.',
-      ),
-    ).toBeVisible();
+    expect(await screen.findByText(message)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Tentar concluir novamente' })).toBeEnabled();
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
-    expect(document.body).not.toHaveTextContent('unavailable');
+    if (result.status === 'failed') {
+      expect(document.body).not.toHaveTextContent(result.reason);
+    }
+  });
+
+  it('sanitiza uma exceção inesperada e mantém a conclusão recuperável', async () => {
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask: vi.fn().mockRejectedValue(new Error('sensitive remote payload')),
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(
+      await screen.findByText(
+        'O Google Tasks está indisponível agora. O tempo continua salvo; tente novamente.',
+      ),
+    ).toBeVisible();
+    expect(document.body).not.toHaveTextContent('sensitive remote payload');
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+  });
+
+  it('encerra um 404 sem retry e remove somente a tarefa ausente do catálogo', async () => {
+    const remainingTask = taskItem('task-2', 'Tarefa preservada');
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [
+          taskList('complete', 'list-1', 'Trabalho', [...completeTaskList().tasks, remainingTask]),
+        ],
+      }),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask: vi.fn().mockResolvedValue({ status: 'failed', reason: 'not-found' }),
+    });
+
+    render(<App dependencies={dependencies} />);
+    expect(await screen.findByText('2 tarefas disponíveis.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(
+      await screen.findByText(
+        'A tarefa não está mais disponível no Google Tasks. O tempo continua salvo.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: /concluir novamente/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Preparar relatório/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Tarefa preservada/ })).toBeVisible();
+    expect(screen.getByText('1 tarefa disponível.')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+  });
+
+  it('repete um patch ambíguo sem duplicar histórico e aceita a tarefa já concluída', async () => {
+    const completeTask = vi
+      .fn<PopupDependencies['completeTask']>()
+      .mockResolvedValueOnce({ status: 'failed', reason: 'unavailable' })
+      .mockResolvedValueOnce({
+        status: 'success',
+        value: { id: 'task-1', status: 'completed' },
+      });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+    await screen.findByText(
+      'O Google Tasks está indisponível agora. O tempo continua salvo; tente novamente.',
+    );
+    const historyBeforeRetry = screen.getByRole('region', { name: 'Histórico' }).textContent;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar concluir novamente' }));
+
+    expect(await screen.findByText(/Tarefa concluída no Google Tasks/)).toBeVisible();
+    expect(completeTask).toHaveBeenCalledTimes(2);
+    expect(completeTask.mock.calls[0]?.slice(0, 3)).toEqual([
+      'completion-token',
+      'list-1',
+      'task-1',
+    ]);
+    expect(completeTask.mock.calls[1]?.slice(0, 3)).toEqual([
+      'completion-token',
+      'list-1',
+      'task-1',
+    ]);
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+    expect(screen.getByRole('region', { name: 'Histórico' }).textContent).toBe(historyBeforeRetry);
+  });
+
+  it('renova o token após 401 e repete o patch somente depois da renovação', async () => {
+    const renewal = Promise.withResolvers<GoogleAuthorizationResult>();
+    const completeTask = vi
+      .fn<PopupDependencies['completeTask']>()
+      .mockResolvedValueOnce({ status: 'authorization-required' })
+      .mockResolvedValueOnce({
+        status: 'success',
+        value: { id: 'task-1', status: 'completed' },
+      });
+    const renewAuthorization = vi.fn(() => renewal.promise);
+    const dependencies = createDependencies({
+      getAuthorization: authorized('invalid-token'),
+      renewAuthorization,
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(await screen.findByRole('button', { name: 'Autorizando…' })).toBeDisabled();
+    expect(renewAuthorization).toHaveBeenCalledOnce();
+    expect(renewAuthorization).toHaveBeenCalledWith('invalid-token');
+    expect(completeTask).toHaveBeenCalledOnce();
+
+    renewal.resolve({ status: 'authorized', accessToken: 'renewed-token' });
+
+    expect(await screen.findByText(/Tarefa concluída no Google Tasks/)).toBeVisible();
+    expect(completeTask).toHaveBeenCalledTimes(2);
+    expect(completeTask.mock.calls[1]?.[0]).toBe('renewed-token');
+  });
+
+  it('não entra em loop quando o patch renovado também retorna 401', async () => {
+    const completeTask = vi
+      .fn<PopupDependencies['completeTask']>()
+      .mockResolvedValue({ status: 'authorization-required' });
+    const renewAuthorization = authorizedRenewal('renewed-token');
+    const dependencies = createDependencies({
+      getAuthorization: authorized('invalid-token'),
+      renewAuthorization,
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Autorizar e tentar novamente' }),
+    ).toBeEnabled();
+    expect(completeTask).toHaveBeenCalledTimes(2);
+    expect(renewAuthorization).toHaveBeenCalledOnce();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+  });
+
+  it('solicita autorização interativa no cartão e retoma a conclusão após o gesto', async () => {
+    const interactiveAuthorization = Promise.withResolvers<GoogleAuthorizationResult>();
+    const completeTask = vi
+      .fn<PopupDependencies['completeTask']>()
+      .mockResolvedValueOnce({ status: 'authorization-required' })
+      .mockResolvedValueOnce({
+        status: 'success',
+        value: { id: 'task-1', status: 'completed' },
+      });
+    const dependencies = createDependencies({
+      getAuthorization: authorized('invalid-token'),
+      renewAuthorization: vi.fn().mockResolvedValue({ status: 'failed' }),
+      requestAuthorization: vi.fn(() => interactiveAuthorization.promise),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    const authorize = await screen.findByRole('button', {
+      name: 'Autorizar e tentar novamente',
+    });
+    expect(dependencies.requestAuthorization).not.toHaveBeenCalled();
+    fireEvent.click(authorize);
+
+    const authorizing = await screen.findByRole('button', { name: 'Autorizando…' });
+    expect(authorizing).toBeDisabled();
+    expect(authorizing).toHaveAttribute('aria-busy', 'true');
+    expect(dependencies.requestAuthorization).toHaveBeenCalledOnce();
+    expect(completeTask).toHaveBeenCalledOnce();
+
+    interactiveAuthorization.resolve({
+      status: 'authorized',
+      accessToken: 'interactive-token',
+    });
+
+    expect(await screen.findByText(/Tarefa concluída no Google Tasks/)).toBeVisible();
+    expect(completeTask).toHaveBeenCalledTimes(2);
+    expect(completeTask.mock.calls[1]?.[0]).toBe('interactive-token');
   });
 
   it('não restaura a ação transitória ao remontar o popup', async () => {
@@ -1429,6 +1650,9 @@ describe('App', () => {
 
   it('substitui o resultado transitório quando outra sessão é finalizada no mesmo popup', async () => {
     let notify: ((observation: StoredTimerStateObservation) => void) | undefined;
+    const pendingCompletion =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['completeTask']>>>();
+    const completeTask = vi.fn<PopupDependencies['completeTask']>(() => pendingCompletion.promise);
     const initial = activeTimerState();
     const firstSession = initial.activeSession;
 
@@ -1450,6 +1674,8 @@ describe('App', () => {
       runningSinceMs: 9_000,
     } as const;
     const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      completeTask,
       observeTimerState: (listener) => {
         notify = listener;
         listener({ status: 'ready', value: initial });
@@ -1464,6 +1690,9 @@ describe('App', () => {
         'Preparar relatório',
       ),
     ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Concluir tarefa no Google' }));
+    await screen.findByRole('button', { name: 'Concluindo…' });
+    const firstSignal = completeTask.mock.calls[0]?.[3];
 
     act(() => {
       notify?.({
@@ -1477,8 +1706,19 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
 
     const completion = await screen.findByRole('region', { name: 'Tarefa finalizada' });
+    expect(firstSignal?.aborted).toBe(true);
     expect(within(completion).getByText('Segunda tarefa')).toBeVisible();
     expect(within(completion).queryByText('Preparar relatório')).not.toBeInTheDocument();
+
+    pendingCompletion.resolve({
+      status: 'success',
+      value: { id: 'task-1', status: 'completed' },
+    });
+    await act(async () => Promise.resolve());
+    expect(within(completion).getByText('Segunda tarefa')).toBeVisible();
+    expect(
+      within(completion).getByRole('button', { name: 'Concluir tarefa no Google' }),
+    ).toBeEnabled();
   });
 
   it('aborta a conclusão remota ao desmontar e ignora a resposta posterior', async () => {

@@ -520,23 +520,44 @@ controle transitório de conclusão não reapareceu, enquanto o registro local p
 
 ### 7.2 Falhas e repetição
 
-- [ ] Informar falha remota sem remover, alterar, duplicar ou ocultar o histórico.
-- [ ] Permitir nova tentativa enquanto o resultado da sessão estiver visível.
-- [ ] Tornar a repetição segura sem executar mutações locais duplicadas.
-- [ ] Tratar tarefa removida sem tentar recriá-la.
-- [ ] Tratar tarefa já concluída em outro cliente preservando o histórico.
-- [ ] Tratar autorização expirada durante a conclusão e permitir retomada contextual.
+- [x] Informar falha remota sem remover, alterar, duplicar ou ocultar o histórico.
+- [x] Permitir nova tentativa enquanto o resultado da sessão estiver visível.
+- [x] Tornar a repetição segura sem executar mutações locais duplicadas.
+- [x] Tratar tarefa removida sem tentar recriá-la.
+- [x] Tratar tarefa já concluída em outro cliente preservando o histórico.
+- [x] Tratar autorização expirada durante a conclusão e permitir retomada contextual.
+
+Validação de 2026-08-31: falhas e repetição segura aprovadas em onze testes de interface novos,
+dentro de 247 testes unitários totais. O popup diferenciou acesso negado, limite, indisponibilidade,
+resposta inválida, falha inesperada e ausência da tarefa sem expor motivos internos nem alterar o
+histórico. Falhas recuperáveis mantiveram retry; `404` encerrou o fluxo sem recriar a tarefa e
+removeu somente o item obsoleto do catálogo em memória. Uma resposta ambígua seguida de
+`completed` repetiu apenas o mesmo patch remoto e preservou um único registro local. Um `401`
+removeu e renovou o token antes de um único segundo `PATCH`; outro `401` não iniciou loop. Quando
+a renovação silenciosa falhou, somente o controle contextual **Autorizar e tentar novamente**
+iniciou OAuth interativo. Desmontagem e nova finalização abortaram operações obsoletas sem mensagem
+tardia. `pnpm check`, `pnpm test:e2e` (6 testes), `pnpm build`, `pnpm audit --prod` (sem
+vulnerabilidades conhecidas) e `git diff --check` passaram. O manifesto manteve somente `identity`,
+`storage` e o host da Google Tasks API, sem background ou content script.
 
 ### 7.3 Testes e smoke real
 
 - [x] Testar que a conclusão só ocorre por ação explícita posterior à persistência local.
 - [x] Testar método, URL e corpo mínimos do `PATCH`.
 - [x] Testar que campos alheios à conclusão nunca são enviados.
-- [ ] Testar falha, retry, token inválido, tarefa ausente e tarefa já concluída.
+- [x] Testar falha, retry, token inválido, tarefa ausente e tarefa já concluída.
 - [x] Testar que nenhuma resposta remota modifica o registro histórico.
 - [x] Executar smoke documentado com conta de teste e tarefa comum.
-- [ ] Executar smoke documentado com uma ocorrência recorrente conhecida.
-- [ ] Documentar o comportamento real da próxima ocorrência e qualquer limitação observada sem prometer regra não exposta pela API.
+- [x] Executar smoke documentado com uma ocorrência recorrente conhecida.
+- [x] Documentar o comportamento real da próxima ocorrência e qualquer limitação observada sem prometer regra não exposta pela API.
+
+Smoke manual de 2026-08-31: uma ocorrência recorrente conhecida foi medida, finalizada e concluída
+com sucesso pelo Pacebit. O Google Tasks sinalizou a próxima recorrência, mas não criou previamente
+uma nova tarefa consumível pela API; no comportamento observado, essa ocorrência é materializada
+pelo Google somente no dia correspondente. O histórico local permaneceu com exatamente uma sessão
+e, após fechar e reabrir o popup, o cartão transitório de conclusão não reapareceu. Essa observação
+descreve somente o teste realizado e não estabelece uma regra de recorrência além do contrato
+público da API.
 
 ## 8. Robustez, E2E e segurança
 

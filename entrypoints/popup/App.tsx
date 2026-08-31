@@ -282,6 +282,11 @@ function TaskCompletionCard({
   }
 
   const working = state.status === 'working';
+  const actionable =
+    state.status === 'available' ||
+    state.status === 'failed' ||
+    state.status === 'authorization-required' ||
+    working;
 
   return (
     <SummaryCard id="task-completion-heading" title="Tarefa finalizada">
@@ -292,9 +297,9 @@ function TaskCompletionCard({
         O tempo já está salvo. Concluir no Google é uma ação separada.
       </p>
       <p id="task-completion-status" className="timer-action-status" role="status" aria-atomic>
-        {taskCompletionMessage(state.status)}
+        {taskCompletionMessage(state)}
       </p>
-      {state.status === 'available' || state.status === 'failed' || working ? (
+      {actionable ? (
         <button
           className="primary-button"
           type="button"
@@ -303,27 +308,57 @@ function TaskCompletionCard({
           disabled={working}
           onClick={onComplete}
         >
-          {working
-            ? 'Concluindo…'
-            : state.status === 'failed'
-              ? 'Tentar concluir novamente'
-              : 'Concluir tarefa no Google'}
+          {taskCompletionButtonLabel(state)}
         </button>
       ) : null}
     </SummaryCard>
   );
 }
 
-function taskCompletionMessage(status: Exclude<PopupTaskCompletionState['status'], 'hidden'>) {
-  switch (status) {
+function taskCompletionButtonLabel(state: Exclude<PopupTaskCompletionState, { status: 'hidden' }>) {
+  if (state.status === 'working') {
+    return state.action === 'authorize' ? 'Autorizando…' : 'Concluindo…';
+  }
+
+  if (state.status === 'authorization-required') {
+    return 'Autorizar e tentar novamente';
+  }
+
+  return state.status === 'failed' ? 'Tentar concluir novamente' : 'Concluir tarefa no Google';
+}
+
+function taskCompletionMessage(state: Exclude<PopupTaskCompletionState, { status: 'hidden' }>) {
+  switch (state.status) {
     case 'available':
       return 'A tarefa ainda não foi alterada no Google Tasks.';
     case 'working':
-      return 'Concluindo a tarefa no Google Tasks…';
+      return state.action === 'authorize'
+        ? 'Renovando a autorização. O tempo continua salvo.'
+        : 'Concluindo a tarefa no Google Tasks. O tempo continua salvo.';
     case 'succeeded':
-      return 'Tarefa concluída no Google Tasks.';
+      return 'Tarefa concluída no Google Tasks. O tempo permanece salvo no histórico.';
+    case 'authorization-required':
+      return 'Autorize novamente para concluir a tarefa. O tempo continua salvo.';
     case 'failed':
-      return 'Não foi possível concluir a tarefa no Google. O tempo continua salvo.';
+      return taskCompletionFailureMessage(state.reason);
+    case 'task-unavailable':
+      return 'A tarefa não está mais disponível no Google Tasks. O tempo continua salvo.';
+  }
+}
+
+function taskCompletionFailureMessage(
+  reason: Extract<PopupTaskCompletionState, { status: 'failed' }>['reason'],
+) {
+  switch (reason) {
+    case 'forbidden':
+      return 'O Google não permitiu concluir esta tarefa. O tempo continua salvo.';
+    case 'rate-limited':
+      return 'O Google está limitando novas solicitações. O tempo continua salvo; tente novamente.';
+    case 'unavailable':
+      return 'O Google Tasks está indisponível agora. O tempo continua salvo; tente novamente.';
+    case 'invalid-response':
+    case 'request-failed':
+      return 'Não foi possível confirmar a conclusão no Google. O tempo continua salvo; tente novamente.';
   }
 }
 

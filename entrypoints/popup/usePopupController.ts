@@ -139,10 +139,27 @@ export type PopupTimerControlsState =
 
 export type PopupTaskCompletionState =
   | { readonly status: 'hidden' }
+  | { readonly status: 'available'; readonly session: CompletedSession }
   | {
-      readonly status: 'available' | 'working' | 'succeeded' | 'failed';
+      readonly status: 'working';
+      readonly action: 'authorize' | 'complete';
       readonly session: CompletedSession;
-    };
+    }
+  | { readonly status: 'succeeded'; readonly session: CompletedSession }
+  | { readonly status: 'authorization-required'; readonly session: CompletedSession }
+  | {
+      readonly status: 'failed';
+      readonly reason: PopupTaskCompletionFailure;
+      readonly session: CompletedSession;
+    }
+  | { readonly status: 'task-unavailable'; readonly session: CompletedSession };
+
+export type PopupTaskCompletionFailure =
+  | 'forbidden'
+  | 'rate-limited'
+  | 'unavailable'
+  | 'invalid-response'
+  | 'request-failed';
 
 const defaultDependencies: PopupDependencies = {
   getAuthorization: getGoogleAuthorization,
@@ -662,60 +679,90 @@ export function usePopupController(
   const completeFinishedTask = useCallback(async () => {
     if (
       completionInFlight.current ||
-      (taskCompletion.status !== 'available' && taskCompletion.status !== 'failed')
+      (taskCompletion.status !== 'available' &&
+        taskCompletion.status !== 'failed' &&
+        taskCompletion.status !== 'authorization-required')
     ) {
       return;
     }
 
     const session = taskCompletion.session;
+    const interactive = taskCompletion.status === 'authorization-required';
     const controller = new AbortController();
     completionInFlight.current = true;
     completionController.current = controller;
-    setTaskCompletion({ status: 'working', session });
+    setTaskCompletion({
+      status: 'working',
+      action: 'authorize',
+      session,
+    });
+
+    const isCurrent = () =>
+      mounted.current && completionController.current === controller && !controller.signal.aborted;
 
     try {
-      const authorization = await dependencies.getAuthorization();
+      let authorization = interactive
+        ? await dependencies.requestAuthorization()
+        : await dependencies.getAuthorization();
 
-      if (
-        !mounted.current ||
-        completionController.current !== controller ||
-        controller.signal.aborted
-      ) {
+      if (!isCurrent()) {
         return;
       }
 
       if (authorization.status !== 'authorized') {
-        setTaskCompletion({ status: 'failed', session });
+        setTaskCompletion({ status: 'authorization-required', session });
         return;
       }
 
-      const result = await dependencies.completeTask(
+      setTaskCompletion({ status: 'working', action: 'complete', session });
+      let result = await dependencies.completeTask(
         authorization.accessToken,
         session.taskList.id,
         session.task.id,
         controller.signal,
       );
 
-      if (
-        !mounted.current ||
-        completionController.current !== controller ||
-        controller.signal.aborted
-      ) {
+      if (!isCurrent()) {
         return;
       }
 
-      if (result.status !== 'success' || result.value.id !== session.task.id) {
-        setTaskCompletion({ status: 'failed', session });
-        return;
+      if (result.status === 'authorization-required') {
+        setTaskCompletion({ status: 'working', action: 'authorize', session });
+        authorization = await dependencies.renewAuthorization(authorization.accessToken);
+
+        if (!isCurrent()) {
+          return;
+        }
+
+        if (authorization.status !== 'authorized') {
+          setTaskCompletion({ status: 'authorization-required', session });
+          return;
+        }
+
+        setTaskCompletion({ status: 'working', action: 'complete', session });
+        result = await dependencies.completeTask(
+          authorization.accessToken,
+          session.taskList.id,
+          session.task.id,
+          controller.signal,
+        );
+
+        if (!isCurrent()) {
+          return;
+        }
       }
 
-      setTaskCompletion({ status: 'succeeded', session });
-      commitGoogleState(
-        removeCompletedTask(googleRef.current, session.taskList.id, session.task.id),
-      );
+      const nextState = mapTaskCompletionResult(result, session);
+      setTaskCompletion(nextState);
+
+      if (nextState.status === 'succeeded' || nextState.status === 'task-unavailable') {
+        commitGoogleState(
+          removeCompletedTask(googleRef.current, session.taskList.id, session.task.id),
+        );
+      }
     } catch {
       if (mounted.current && completionController.current === controller) {
-        setTaskCompletion({ status: 'failed', session });
+        setTaskCompletion({ status: 'failed', reason: 'unavailable', session });
       }
     } finally {
       if (completionController.current === controller) {
@@ -926,6 +973,35 @@ function removeCompletedTask(
   }
 
   return { ...state, taskLists };
+}
+
+function mapTaskCompletionResult(
+  result: Awaited<ReturnType<typeof completeGoogleTask>>,
+  session: CompletedSession,
+): PopupTaskCompletionState {
+  if (result.status === 'success') {
+    return result.value.id === session.task.id
+      ? { status: 'succeeded', session }
+      : { status: 'failed', reason: 'invalid-response', session };
+  }
+
+  if (result.status === 'authorization-required') {
+    return { status: 'authorization-required', session };
+  }
+
+  if (result.status === 'cancelled') {
+    return { status: 'failed', reason: 'unavailable', session };
+  }
+
+  if (result.reason === 'not-found') {
+    return { status: 'task-unavailable', session };
+  }
+
+  return {
+    status: 'failed',
+    reason: result.reason === 'invalid-request' ? 'request-failed' : result.reason,
+    session,
+  };
 }
 
 function createLocalSummary(
