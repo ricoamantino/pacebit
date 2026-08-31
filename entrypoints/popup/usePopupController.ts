@@ -5,6 +5,7 @@ import {
   renewGoogleAuthorization,
   requestGoogleAuthorization,
 } from '../../src/google/authorization';
+import { completeGoogleTask } from '../../src/google/tasks';
 import {
   type GoogleTaskListLoad,
   type GoogleTasksCatalogProgressListener,
@@ -46,6 +47,7 @@ export interface PopupDependencies {
     signal?: AbortSignal,
     onProgress?: GoogleTasksCatalogProgressListener,
   ) => Promise<GoogleTasksCatalogResult>;
+  readonly completeTask: typeof completeGoogleTask;
   readonly observeTimerState: (
     listener: (observation: StoredTimerStateObservation) => void,
   ) => () => void;
@@ -89,6 +91,7 @@ export interface PopupController {
   readonly prioritizedTasks: readonly PrioritizedGoogleTask[];
   readonly sessionSelection: PopupSessionSelectionState;
   readonly timerControls: PopupTimerControlsState;
+  readonly taskCompletion: PopupTaskCompletionState;
   readonly connectGoogle: () => void;
   readonly retryGoogle: () => void;
   readonly selectTask: (taskListId: string, taskId: string) => void;
@@ -97,6 +100,7 @@ export interface PopupController {
   readonly resumeActiveSession: () => void;
   readonly finishActiveSession: () => void;
   readonly cancelActiveSession: () => void;
+  readonly completeFinishedTask: () => void;
 }
 
 export type PopupSessionSelectionState =
@@ -133,11 +137,19 @@ export type PopupTimerControlsState =
   | { readonly status: 'finalization-pending' }
   | { readonly status: 'succeeded'; readonly action: 'finish' | 'cancel' };
 
+export type PopupTaskCompletionState =
+  | { readonly status: 'hidden' }
+  | {
+      readonly status: 'available' | 'working' | 'succeeded' | 'failed';
+      readonly session: CompletedSession;
+    };
+
 const defaultDependencies: PopupDependencies = {
   getAuthorization: getGoogleAuthorization,
   requestAuthorization: requestGoogleAuthorization,
   renewAuthorization: renewGoogleAuthorization,
   loadTasksCatalog: loadGoogleTasksCatalog,
+  completeTask: completeGoogleTask,
   observeTimerState: observeStoredTimerState,
   startStoredSession,
   pauseStoredSession,
@@ -178,11 +190,16 @@ export function usePopupController(
   const [startingTask, setStartingTask] = useState<PrioritizedGoogleTask | null>(null);
   const [sessionStartStatus, setSessionStartStatus] = useState<SessionStartStatus>('idle');
   const [timerActionStatus, setTimerActionStatus] = useState<TimerActionStatus>({ status: 'idle' });
+  const [taskCompletion, setTaskCompletion] = useState<PopupTaskCompletionState>({
+    status: 'hidden',
+  });
   const googleRef = useRef(google);
   const nextOperationId = useRef(0);
   const activeOperation = useRef<ActiveOperation | null>(null);
   const startInFlight = useRef(false);
   const timerActionInFlight = useRef(false);
+  const completionInFlight = useRef(false);
+  const completionController = useRef<AbortController | null>(null);
   const mounted = useRef(false);
 
   useEffect(() => {
@@ -190,6 +207,8 @@ export function usePopupController(
 
     return () => {
       mounted.current = false;
+      completionController.current?.abort();
+      completionController.current = null;
     };
   }, []);
 
@@ -493,6 +512,7 @@ export function usePopupController(
       baseState: StoredTimerState,
       command: () => Promise<StoredTransitionResult<T>>,
       applyValue: (state: StoredTimerState, value: T) => StoredTimerState,
+      onSuccess?: (value: T) => void,
     ): Promise<void> => {
       if (timerActionInFlight.current) {
         return;
@@ -520,6 +540,7 @@ export function usePopupController(
               ? { status: 'succeeded', action }
               : { status: 'idle' },
           );
+          onSuccess?.(result.value);
           return;
         }
 
@@ -609,6 +630,12 @@ export function usePopupController(
           ? current.history
           : [...current.history, value],
       }),
+      (completed) => {
+        completionController.current?.abort();
+        completionController.current = null;
+        completionInFlight.current = false;
+        setTaskCompletion({ status: 'available', session: completed });
+      },
     );
   }, [dependencies, executeTimerAction, storedTimerState]);
 
@@ -632,6 +659,72 @@ export function usePopupController(
     );
   }, [dependencies, executeTimerAction, storedTimerState]);
 
+  const completeFinishedTask = useCallback(async () => {
+    if (
+      completionInFlight.current ||
+      (taskCompletion.status !== 'available' && taskCompletion.status !== 'failed')
+    ) {
+      return;
+    }
+
+    const session = taskCompletion.session;
+    const controller = new AbortController();
+    completionInFlight.current = true;
+    completionController.current = controller;
+    setTaskCompletion({ status: 'working', session });
+
+    try {
+      const authorization = await dependencies.getAuthorization();
+
+      if (
+        !mounted.current ||
+        completionController.current !== controller ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
+
+      if (authorization.status !== 'authorized') {
+        setTaskCompletion({ status: 'failed', session });
+        return;
+      }
+
+      const result = await dependencies.completeTask(
+        authorization.accessToken,
+        session.taskList.id,
+        session.task.id,
+        controller.signal,
+      );
+
+      if (
+        !mounted.current ||
+        completionController.current !== controller ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
+
+      if (result.status !== 'success' || result.value.id !== session.task.id) {
+        setTaskCompletion({ status: 'failed', session });
+        return;
+      }
+
+      setTaskCompletion({ status: 'succeeded', session });
+      commitGoogleState(
+        removeCompletedTask(googleRef.current, session.taskList.id, session.task.id),
+      );
+    } catch {
+      if (mounted.current && completionController.current === controller) {
+        setTaskCompletion({ status: 'failed', session });
+      }
+    } finally {
+      if (completionController.current === controller) {
+        completionController.current = null;
+        completionInFlight.current = false;
+      }
+    }
+  }, [commitGoogleState, dependencies, taskCompletion]);
+
   const sessionSelection = createSessionSelectionState(
     storedTimerState,
     sessionStartStatus === 'starting' ? (startingTask ?? selectedTask) : selectedTask,
@@ -646,6 +739,7 @@ export function usePopupController(
     prioritizedTasks,
     sessionSelection,
     timerControls,
+    taskCompletion,
     connectGoogle: () => void authorizeAndLoad('interactive'),
     retryGoogle: () => void authorizeAndLoad('retry'),
     selectTask,
@@ -654,6 +748,7 @@ export function usePopupController(
     resumeActiveSession,
     finishActiveSession,
     cancelActiveSession,
+    completeFinishedTask: () => void completeFinishedTask(),
   };
 }
 
@@ -813,6 +908,24 @@ function countTasks(taskLists: readonly GoogleTaskListLoad[]): number {
     (count, taskList) => count + (taskList.status === 'pending' ? 0 : taskList.tasks.length),
     0,
   );
+}
+
+function removeCompletedTask(
+  state: PopupGoogleState,
+  taskListId: string,
+  taskId: string,
+): PopupGoogleState {
+  const taskLists = state.taskLists.map((taskList) =>
+    taskList.status === 'pending' || taskList.taskList.id !== taskListId
+      ? taskList
+      : { ...taskList, tasks: taskList.tasks.filter((task) => task.id !== taskId) },
+  );
+
+  if (state.status === 'ready' && countTasks(taskLists) === 0) {
+    return { status: 'empty', taskLists };
+  }
+
+  return { ...state, taskLists };
 }
 
 function createLocalSummary(

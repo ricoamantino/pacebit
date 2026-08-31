@@ -494,12 +494,29 @@ Tasks API, sem background ou content script.
 
 ### 7.1 Operação remota independente
 
-- [ ] Oferecer a conclusão da tarefa somente depois de a sessão estar salva localmente.
-- [ ] Exigir ação explícita em controle claramente identificado para concluir a tarefa.
-- [ ] Executar `tasks.patch`, nunca `tasks.update`.
-- [ ] Enviar `status: "completed"` e adicionar `completed` somente se o contrato real demonstrar que é necessário.
-- [ ] Não reenviar título, notas, data agendada, posição ou outros campos da tarefa.
-- [ ] Manter conclusão remota e histórico local como operações independentes.
+- [x] Oferecer a conclusão da tarefa somente depois de a sessão estar salva localmente.
+- [x] Exigir ação explícita em controle claramente identificado para concluir a tarefa.
+- [x] Executar `tasks.patch`, nunca `tasks.update`.
+- [x] Enviar `status: "completed"` e adicionar `completed` somente se o contrato real demonstrar que é necessário.
+- [x] Não reenviar título, notas, data agendada, posição ou outros campos da tarefa.
+- [x] Manter conclusão remota e histórico local como operações independentes.
+
+Validação de 2026-08-31: conclusão remota transitória aprovada em nove testes de interface novos,
+dentro de 236 testes unitários totais. O controle apareceu somente após a persistência local
+confirmada e exigiu clique explícito para obter autorização silenciosa e chamar a API. Estados
+ocupado, sucesso, falha, cancelamento, remontagem e desmontagem foram tratados sem alterar ou
+duplicar o histórico; snapshots permaneceram texto não confiável e o sucesso removeu somente a
+tarefa correspondente do catálogo em memória. Os testes REST existentes confirmaram `PATCH`, URL
+codificada, corpo exclusivo `{ "status": "completed" }`, campos parciais da resposta e ausência de
+título, notas, data, posição ou `completed` na requisição. `pnpm check`, `pnpm test:e2e` (6 testes),
+`pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e `git diff --check` passaram.
+O manifesto manteve somente `identity`, `storage` e o host da Google Tasks API, sem background ou
+content script. Falhas específicas, renovação durante a conclusão e o smoke com ocorrência
+recorrente permanecem para as etapas seguintes.
+
+Smoke manual de 2026-08-31: em uma conta de teste real, uma tarefa comum foi concluída pelo
+controle explícito do Pacebit e apareceu concluída no Google Tasks. Ao fechar e reabrir o popup, o
+controle transitório de conclusão não reapareceu, enquanto o registro local permaneceu salvo.
 
 ### 7.2 Falhas e repetição
 
@@ -512,12 +529,12 @@ Tasks API, sem background ou content script.
 
 ### 7.3 Testes e smoke real
 
-- [ ] Testar que a conclusão só ocorre por ação explícita posterior à persistência local.
-- [ ] Testar método, URL e corpo mínimos do `PATCH`.
-- [ ] Testar que campos alheios à conclusão nunca são enviados.
+- [x] Testar que a conclusão só ocorre por ação explícita posterior à persistência local.
+- [x] Testar método, URL e corpo mínimos do `PATCH`.
+- [x] Testar que campos alheios à conclusão nunca são enviados.
 - [ ] Testar falha, retry, token inválido, tarefa ausente e tarefa já concluída.
-- [ ] Testar que nenhuma resposta remota modifica o registro histórico.
-- [ ] Executar smoke documentado com conta de teste e tarefa comum.
+- [x] Testar que nenhuma resposta remota modifica o registro histórico.
+- [x] Executar smoke documentado com conta de teste e tarefa comum.
 - [ ] Executar smoke documentado com uma ocorrência recorrente conhecida.
 - [ ] Documentar o comportamento real da próxima ocorrência e qualquer limitação observada sem prometer regra não exposta pela API.
 

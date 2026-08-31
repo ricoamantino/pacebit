@@ -8,6 +8,7 @@ import {
   type PopupGoogleState,
   type PopupLocalState,
   type PopupSessionSelectionState,
+  type PopupTaskCompletionState,
   type PopupTimerAction,
   type PopupTimerControlsState,
   usePopupController,
@@ -33,10 +34,12 @@ export function App({ dependencies }: AppProps) {
       <CurrentSession
         state={controller.local}
         controls={controller.timerControls}
+        taskCompletion={controller.taskCompletion}
         onPause={controller.pauseActiveSession}
         onResume={controller.resumeActiveSession}
         onFinish={controller.finishActiveSession}
         onCancel={controller.cancelActiveSession}
+        onCompleteTask={controller.completeFinishedTask}
       />
       <GoogleStatus
         state={controller.google}
@@ -191,17 +194,21 @@ function GoogleStatus({
 function CurrentSession({
   state,
   controls,
+  taskCompletion,
   onPause,
   onResume,
   onFinish,
   onCancel,
+  onCompleteTask,
 }: {
   readonly state: PopupLocalState;
   readonly controls: PopupTimerControlsState;
+  readonly taskCompletion: PopupTaskCompletionState;
   readonly onPause: () => void;
   readonly onResume: () => void;
   readonly onFinish: () => void;
   readonly onCancel: () => void;
+  readonly onCompleteTask: () => void;
 }) {
   const summary = state.status === 'loading' ? undefined : state.value;
   const unavailable = state.status === 'error';
@@ -258,8 +265,66 @@ function CurrentSession({
           </>
         )}
       </SummaryCard>
+      <TaskCompletionCard state={taskCompletion} onComplete={onCompleteTask} />
     </section>
   );
+}
+
+function TaskCompletionCard({
+  state,
+  onComplete,
+}: {
+  readonly state: PopupTaskCompletionState;
+  readonly onComplete: () => void;
+}) {
+  if (state.status === 'hidden') {
+    return null;
+  }
+
+  const working = state.status === 'working';
+
+  return (
+    <SummaryCard id="task-completion-heading" title="Tarefa finalizada">
+      <p className="summary-value">{formatDuration(state.session.durationMs)}</p>
+      <p className="summary-title">{state.session.task.title || 'Sem título'}</p>
+      <p className="summary-detail">{state.session.taskList.title || 'Lista sem título'}</p>
+      <p id="task-completion-explanation" className="summary-detail">
+        O tempo já está salvo. Concluir no Google é uma ação separada.
+      </p>
+      <p id="task-completion-status" className="timer-action-status" role="status" aria-atomic>
+        {taskCompletionMessage(state.status)}
+      </p>
+      {state.status === 'available' || state.status === 'failed' || working ? (
+        <button
+          className="primary-button"
+          type="button"
+          aria-busy={working || undefined}
+          aria-describedby="task-completion-explanation task-completion-status"
+          disabled={working}
+          onClick={onComplete}
+        >
+          {working
+            ? 'Concluindo…'
+            : state.status === 'failed'
+              ? 'Tentar concluir novamente'
+              : 'Concluir tarefa no Google'}
+        </button>
+      ) : null}
+    </SummaryCard>
+  );
+}
+
+function taskCompletionMessage(status: Exclude<PopupTaskCompletionState['status'], 'hidden'>) {
+  switch (status) {
+    case 'available':
+      return 'A tarefa ainda não foi alterada no Google Tasks.';
+    case 'working':
+      return 'Concluindo a tarefa no Google Tasks…';
+    case 'succeeded':
+      return 'Tarefa concluída no Google Tasks.';
+    case 'failed':
+      return 'Não foi possível concluir a tarefa no Google. O tempo continua salvo.';
+  }
 }
 
 function TimerControls({

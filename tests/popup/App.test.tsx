@@ -1254,6 +1254,294 @@ describe('App', () => {
     expect(finishStoredSession).toHaveBeenCalledWith(timer.activeSession, NOW_MS);
   });
 
+  it('oferece a conclusão remota somente depois da persistência e do clique explícito', async () => {
+    const pendingFinish =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['finishStoredSession']>>>();
+    const finishStoredSession = vi.fn<PopupDependencies['finishStoredSession']>(
+      () => pendingFinish.promise,
+    );
+    const completeTask = vi.fn<PopupDependencies['completeTask']>((_token, _listId, taskId) =>
+      Promise.resolve({
+        status: 'success',
+        value: { id: taskId, status: 'completed' },
+      }),
+    );
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      loadTasksCatalog: vi.fn().mockResolvedValue({
+        status: 'complete',
+        taskLists: [completeTaskList()],
+      }),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      finishStoredSession,
+      completeTask,
+    });
+    const active = activeTimerState().activeSession;
+
+    if (!active) {
+      throw new Error('Expected an active session.');
+    }
+
+    render(<App dependencies={dependencies} />);
+    expect(await screen.findByText('1 tarefa disponível.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+
+    expect(screen.queryByRole('heading', { name: 'Tarefa finalizada' })).not.toBeInTheDocument();
+    expect(completeTask).not.toHaveBeenCalled();
+
+    pendingFinish.resolve(finishSession(active, NOW_MS));
+
+    const completion = await screen.findByRole('region', { name: 'Tarefa finalizada' });
+    expect(within(completion).getByText('Preparar relatório')).toBeVisible();
+    expect(within(completion).getByText('Trabalho')).toBeVisible();
+    expect(within(completion).getByText('00:00:05')).toBeVisible();
+    expect(within(completion).getByText(/O tempo já está salvo/)).toBeVisible();
+    expect(completeTask).not.toHaveBeenCalled();
+    expect(dependencies.getAuthorization).toHaveBeenCalledOnce();
+
+    fireEvent.click(within(completion).getByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(await within(completion).findByText('Tarefa concluída no Google Tasks.')).toBeVisible();
+    expect(completeTask).toHaveBeenCalledOnce();
+    expect(completeTask).toHaveBeenCalledWith(
+      'completion-token',
+      'list-1',
+      'task-1',
+      expect.any(AbortSignal),
+    );
+    expect(dependencies.getAuthorization).toHaveBeenCalledTimes(2);
+    expect(dependencies.requestAuthorization).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+    expect(await screen.findByText('Nenhuma tarefa disponível nas suas listas.')).toBeVisible();
+  });
+
+  it('impede chamadas remotas concorrentes enquanto conclui a tarefa', async () => {
+    const pendingCompletion =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['completeTask']>>>();
+    const completeTask = vi.fn<PopupDependencies['completeTask']>(() => pendingCompletion.promise);
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    const working = await screen.findByRole('button', { name: 'Concluindo…' });
+    expect(working).toBeDisabled();
+    expect(working).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(working);
+    expect(completeTask).toHaveBeenCalledOnce();
+
+    pendingCompletion.resolve({
+      status: 'success',
+      value: { id: 'task-1', status: 'completed' },
+    });
+    expect(await screen.findByText('Tarefa concluída no Google Tasks.')).toBeVisible();
+  });
+
+  it('não solicita autorização interativa quando a conclusão não tem token silencioso', async () => {
+    const completeTask = vi.fn<PopupDependencies['completeTask']>();
+    const dependencies = createDependencies({
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(
+      await screen.findByText(
+        'Não foi possível concluir a tarefa no Google. O tempo continua salvo.',
+      ),
+    ).toBeVisible();
+    expect(completeTask).not.toHaveBeenCalled();
+    expect(dependencies.requestAuthorization).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+  });
+
+  it.each([
+    ['falha', { status: 'failed', reason: 'unavailable' } as const],
+    ['cancelamento', { status: 'cancelled' } as const],
+  ])('preserva o histórico quando a conclusão remota termina em %s', async (_name, result) => {
+    const completeTask = vi.fn<PopupDependencies['completeTask']>().mockResolvedValue(result);
+    const dependencies = createDependencies({
+      getAuthorization: authorized('completion-token'),
+      observeTimerState: observeReadyTimerState(activeTimerState()),
+      completeTask,
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+
+    expect(
+      await screen.findByText(
+        'Não foi possível concluir a tarefa no Google. O tempo continua salvo.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Tentar concluir novamente' })).toBeEnabled();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+    expect(document.body).not.toHaveTextContent('unavailable');
+  });
+
+  it('não restaura a ação transitória ao remontar o popup', async () => {
+    const firstView = render(
+      <App
+        dependencies={createDependencies({
+          observeTimerState: observeReadyTimerState(activeTimerState()),
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    expect(await screen.findByRole('button', { name: 'Concluir tarefa no Google' })).toBeVisible();
+    firstView.unmount();
+
+    const active = activeTimerState().activeSession;
+
+    if (!active) {
+      throw new Error('Expected an active session.');
+    }
+
+    const completed = finishSession(active, NOW_MS);
+
+    if (completed.status !== 'applied') {
+      throw new Error('Expected a completed session.');
+    }
+
+    render(
+      <App
+        dependencies={createDependencies({
+          observeTimerState: observeReadyTimerState({
+            activeSession: null,
+            history: [...activeTimerState().history, completed.value],
+          }),
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Tarefa finalizada' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('2');
+  });
+
+  it('substitui o resultado transitório quando outra sessão é finalizada no mesmo popup', async () => {
+    let notify: ((observation: StoredTimerStateObservation) => void) | undefined;
+    const initial = activeTimerState();
+    const firstSession = initial.activeSession;
+
+    if (!firstSession) {
+      throw new Error('Expected an active session.');
+    }
+
+    const firstCompletion = finishSession(firstSession, NOW_MS);
+
+    if (firstCompletion.status !== 'applied') {
+      throw new Error('Expected a completed session.');
+    }
+
+    const secondSession = {
+      ...firstSession,
+      id: 'second-session',
+      task: { id: 'task-2', title: 'Segunda tarefa' },
+      startedAtMs: 9_000,
+      runningSinceMs: 9_000,
+    } as const;
+    const dependencies = createDependencies({
+      observeTimerState: (listener) => {
+        notify = listener;
+        listener({ status: 'ready', value: initial });
+        return () => {};
+      },
+    });
+
+    render(<App dependencies={dependencies} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    expect(
+      within(await screen.findByRole('region', { name: 'Tarefa finalizada' })).getByText(
+        'Preparar relatório',
+      ),
+    ).toBeVisible();
+
+    act(() => {
+      notify?.({
+        status: 'ready',
+        value: {
+          activeSession: secondSession,
+          history: [...initial.history, firstCompletion.value],
+        },
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+
+    const completion = await screen.findByRole('region', { name: 'Tarefa finalizada' });
+    expect(within(completion).getByText('Segunda tarefa')).toBeVisible();
+    expect(within(completion).queryByText('Preparar relatório')).not.toBeInTheDocument();
+  });
+
+  it('aborta a conclusão remota ao desmontar e ignora a resposta posterior', async () => {
+    const pendingCompletion =
+      Promise.withResolvers<Awaited<ReturnType<PopupDependencies['completeTask']>>>();
+    const completeTask = vi.fn<PopupDependencies['completeTask']>(() => pendingCompletion.promise);
+    const view = render(
+      <App
+        dependencies={createDependencies({
+          getAuthorization: authorized('completion-token'),
+          observeTimerState: observeReadyTimerState(activeTimerState()),
+          completeTask,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Concluir tarefa no Google' }));
+    await screen.findByRole('button', { name: 'Concluindo…' });
+    const signal = completeTask.mock.calls[0]?.[3];
+
+    view.unmount();
+    expect(signal?.aborted).toBe(true);
+    pendingCompletion.resolve({
+      status: 'success',
+      value: { id: 'task-1', status: 'completed' },
+    });
+    await act(async () => Promise.resolve());
+
+    expect(view.container).toBeEmptyDOMElement();
+  });
+
+  it('renderiza snapshots da finalização somente como texto', async () => {
+    const timer = activeTimerState();
+
+    if (!timer.activeSession) {
+      throw new Error('Expected an active session.');
+    }
+
+    const unsafeTimer: StoredTimerState = {
+      ...timer,
+      activeSession: {
+        ...timer.activeSession,
+        task: { ...timer.activeSession.task, title: '<img src=x onerror=alert(1)>' },
+        taskList: { ...timer.activeSession.taskList, title: '<script>alert(1)</script>' },
+      },
+    };
+
+    render(
+      <App
+        dependencies={createDependencies({
+          observeTimerState: observeReadyTimerState(unsafeTimer),
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar sessão' }));
+
+    const completion = await screen.findByRole('region', { name: 'Tarefa finalizada' });
+    expect(within(completion).getByText('<img src=x onerror=alert(1)>')).toBeVisible();
+    expect(within(completion).getByText('<script>alert(1)</script>')).toBeVisible();
+    expect(completion.querySelector('img')).toBeNull();
+    expect(completion.querySelector('script')).toBeNull();
+  });
+
   it.each([
     ['com tempo', activeTimerState()],
     ['sem tempo', zeroDurationTimerState()],
@@ -1273,6 +1561,7 @@ describe('App', () => {
       await screen.findByText('Sessão cancelada. Nenhum tempo foi adicionado ao histórico.'),
     ).toBeVisible();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Tarefa finalizada' })).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Histórico' })).toHaveTextContent('1');
     expect(cancelStoredSession).toHaveBeenCalledWith(timer.activeSession);
   });
@@ -1566,6 +1855,12 @@ function createDependencies(overrides: Partial<PopupDependencies> = {}): PopupDe
     requestAuthorization: vi.fn().mockResolvedValue({ status: 'failed' }),
     renewAuthorization: vi.fn().mockResolvedValue({ status: 'authorization-required' }),
     loadTasksCatalog: vi.fn().mockResolvedValue({ status: 'complete', taskLists: [] }),
+    completeTask: vi.fn<PopupDependencies['completeTask']>((_token, _taskListId, taskId) =>
+      Promise.resolve({
+        status: 'success',
+        value: { id: taskId, status: 'completed' },
+      }),
+    ),
     observeTimerState: observeReadyTimerState(EMPTY_TIMER_STATE),
     startStoredSession: vi.fn<PopupDependencies['startStoredSession']>((_expected, input) =>
       Promise.resolve({
