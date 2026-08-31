@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Política de Privacidade — Pacebit</title>
+    <meta
+      name="description"
+      content="Como o Pacebit acessa, usa e armazena dados do Google Tasks e das sessões locais."
+    />
+    <meta name="theme-color" content="#2563eb" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:site_name" content="Pacebit" />
+    <meta property="og:title" content="Política de Privacidade — Pacebit" />
+    <meta
+      property="og:description"
+      content="Como o Pacebit acessa, usa e armazena dados do Google Tasks e das sessões locais."
+    />
+    <meta property="og:url" content="https://pacebit.produtivo.dev/privacy" />
+    <link rel="canonical" href="https://pacebit.produtivo.dev/privacy" />
+    <link rel="icon" type="image/svg+xml" href="/assets/pacebit-mark.svg" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+    <header class="site-header">
+      <div class="container nav-shell">
+        <a class="brand" href="/" aria-label="Pacebit — página inicial">
+          <img src="/assets/pacebit-mark.svg" width="40" height="40" alt="" />
+          <span>Pacebit</span>
+        </a>
+        <nav aria-label="Navegação principal">
+          <a href="/">Início</a>
+          <a href="/privacy" aria-current="page">Privacidade</a>
+          <a href="/terms">Termos</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="conteudo" class="legal-page">
+      <article class="container legal-content">
+        <header class="legal-heading">
+          <p class="eyebrow">Transparência</p>
+          <h1>Política de Privacidade</h1>
+          <p>Última atualização: 31 de agosto de 2026</p>
+        </header>
+
+        <p>
+          Esta política descreve como a extensão Pacebit acessa, usa, armazena e compartilha dados.
+          O contato responsável por dúvidas de privacidade é
+          <a href="mailto:ricoamantino@gmail.com">ricoamantino@gmail.com</a>.
+        </p>
+
+        <h2>Resumo</h2>
+        <p>
+          O Pacebit lê tarefas do Google Tasks para permitir que o usuário escolha uma tarefa e
+          registre o tempo dedicado a ela. A sessão ativa e o histórico ficam somente no
+          armazenamento local da extensão, associado ao perfil atual do Chrome. O Pacebit não possui
+          servidor próprio e não vende, aluga ou utiliza dados para publicidade, telemetria ou
+          treinamento de inteligência artificial.
+        </p>
+
+        <h2>Dados acessados do Google Tasks</h2>
+        <p>Depois da autorização do usuário, o Pacebit pode acessar:</p>
+        <ul>
+          <li>identificadores e títulos das listas de tarefas;</li>
+          <li>identificadores e títulos das tarefas;</li>
+          <li>status, data agendada, posição e relação de hierarquia das tarefas;</li>
+          <li>indicadores necessários para excluir tarefas concluídas, removidas, ocultas ou atribuídas;</li>
+          <li>resultado da conclusão de uma tarefa solicitada explicitamente pelo usuário.</li>
+        </ul>
+        <p>
+          Esses dados são usados para carregar, identificar, priorizar e apresentar as tarefas
+          elegíveis. As respostas completas da Google Tasks API não são persistidas.
+        </p>
+
+        <h2>Dados armazenados localmente</h2>
+        <p>O Pacebit grava no <code>storage.local</code> do Chrome somente:</p>
+        <ul>
+          <li>
+            a sessão ativa, com identificador, snapshots mínimos da tarefa e da lista, timestamps e
+            períodos executados;
+          </li>
+          <li>
+            o histórico de sessões concluídas, com os mesmos snapshots mínimos, início, fim,
+            períodos e duração.
+          </li>
+        </ul>
+        <p>
+          Os títulos são preservados no histórico para que o registro continue compreensível caso a
+          tarefa seja alterada ou removida do Google Tasks. Esses dados não são sincronizados entre
+          dispositivos ou perfis.
+        </p>
+
+        <h2>Autorização Google</h2>
+        <p>
+          O Pacebit usa <code>chrome.identity</code> e o scope
+          <code>https://www.googleapis.com/auth/tasks</code>. O Chrome gerencia o token OAuth. O
+          Pacebit não acessa a senha da conta, não mantém cache próprio do token e não grava token,
+          client secret ou API key.
+        </p>
+        <p>
+          O scope permite operações mais amplas do que o produto utiliza porque a API não oferece
+          uma permissão menor para concluir tarefas. O Pacebit limita voluntariamente seu uso a:
+        </p>
+        <ol>
+          <li>ler listas e tarefas elegíveis;</li>
+          <li>marcar uma tarefa como concluída somente depois de uma ação explícita do usuário.</li>
+        </ol>
+        <p>
+          O Pacebit não cria tarefas, não edita títulos ou notas, não altera datas, não move, não
+          reorganiza e não exclui tarefas.
+        </p>
+
+        <h2>Compartilhamento e transmissão</h2>
+        <p>
+          As chamadas necessárias são enviadas diretamente da extensão para a Google Tasks API por
+          HTTPS. Dados de tarefas e identificadores necessários à operação são transmitidos somente
+          ao Google. O Pacebit não envia tarefas, listas, sessões ou histórico para servidores do
+          desenvolvedor ou outros terceiros.
+        </p>
+        <p>O tratamento realizado pelo Google permanece sujeito aos termos e políticas da própria empresa.</p>
+
+        <h2>Retenção e exclusão</h2>
+        <p>
+          Tarefas e listas permanecem em memória somente enquanto o popup está em uso. Sessão ativa
+          e histórico permanecem no perfil do Chrome até que o usuário:
+        </p>
+        <ul>
+          <li>remova a extensão; ou</li>
+          <li>limpe os dados de armazenamento da extensão pelo Chrome.</li>
+        </ul>
+        <p>
+          O MVP não oferece exclusão individual de registros históricos. A extensão não possui uma
+          cópia em servidor que precise de solicitação separada de exclusão.
+        </p>
+
+        <h2>Segurança</h2>
+        <p>
+          O Pacebit usa Manifest V3, solicita apenas <code>identity</code> e
+          <code>storage</code>, limita o acesso de rede a
+          <code>https://tasks.googleapis.com/*</code>, não executa código remoto e não usa content
+          scripts. O projeto é aberto para inspeção pública. Nenhum método de armazenamento ou
+          transmissão elimina todos os riscos, mas o produto reduz sua superfície mantendo dados
+          localmente e evitando servidores próprios.
+        </p>
+
+        <h2>Venda, publicidade e usos proibidos</h2>
+        <p>O Pacebit não:</p>
+        <ul>
+          <li>vende ou aluga dados;</li>
+          <li>compartilha dados para publicidade;</li>
+          <li>cria perfis de publicidade ou crédito;</li>
+          <li>usa analytics ou telemetria;</li>
+          <li>usa dados para treinar modelos de inteligência artificial;</li>
+          <li>combina dados do Google com outras fontes para finalidade não informada.</li>
+        </ul>
+
+        <h2>Limited Use</h2>
+        <p>
+          O uso de informações recebidas das APIs do Google pelo Pacebit seguirá a
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            rel="noopener noreferrer"
+          >Google API Services User Data Policy</a>, incluindo os requisitos de Limited Use.
+        </p>
+        <blockquote>
+          Pacebit's use and transfer of information received from Google APIs will adhere to the
+          Google API Services User Data Policy, including the Limited Use requirements.
+        </blockquote>
+
+        <h2>Alterações desta política</h2>
+        <p>
+          Esta política deverá ser atualizada antes de qualquer mudança material na forma como o
+          Pacebit acessa, usa, armazena ou compartilha dados. A data no início do documento indicará
+          a revisão mais recente.
+        </p>
+
+        <h2>Contato</h2>
+        <p>
+          Para dúvidas sobre esta política ou o tratamento local dos dados, escreva para
+          <a href="mailto:ricoamantino@gmail.com">ricoamantino@gmail.com</a>.
+        </p>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <p>Pacebit — projeto independente e de código aberto.</p>
+        <nav aria-label="Links institucionais">
+          <a href="/">Início</a>
+          <a href="/terms">Termos</a>
+          <a href="mailto:ricoamantino@gmail.com">Contato</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

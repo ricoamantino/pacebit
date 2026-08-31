@@ -70,8 +70,11 @@ Pacebit o utiliza somente para ler listas e tarefas e para enviar `status: "comp
 uma ação explícita. Não cria, edita, move ou exclui tarefas.
 
 Para OAuth de produção, o Google exige homepage, política de privacidade e termos em domínio
-público verificável. Os rascunhos e textos de revisão estão em
-[`docs/SUBMISSION.md`](docs/SUBMISSION.md); eles ainda não representam uma aprovação.
+público verificável. O site institucional foi preparado para
+[pacebit.produtivo.dev](https://pacebit.produtivo.dev/), com
+[política pública](https://pacebit.produtivo.dev/privacy) e
+[termos públicos](https://pacebit.produtivo.dev/terms). Os demais textos de revisão estão em
+[`docs/SUBMISSION.md`](docs/SUBMISSION.md); esses materiais não representam aprovação do Google.
 
 ### Ambientes OAuth
 
@@ -147,10 +150,14 @@ Consulte a [política de privacidade](docs/PRIVACY.md) para a descrição comple
   uma tarefa comum;
 - os fluxos E2E ampliados e a bateria manual de resiliência das SPECs 8.1 e 8.2 permanecem no
   backlog pós-lançamento;
-- homepage e política ainda precisam ser publicadas em domínio próprio antes do OAuth de produção.
+- a verificação OAuth de produção ainda depende da publicação efetiva do site, verificação do
+  domínio e vídeo de demonstração aceito pelo Google.
 
 ## Documentação
 
+- [Site institucional](https://pacebit.produtivo.dev/)
+- [Política de privacidade pública](https://pacebit.produtivo.dev/privacy)
+- [Termos de uso públicos](https://pacebit.produtivo.dev/terms)
 - [Escopo do produto](docs/SCOPE.md)
 - [Especificação executável](docs/SPEC.md)
 - [Política de privacidade](docs/PRIVACY.md)

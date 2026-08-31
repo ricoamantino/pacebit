@@ -1,16 +1,18 @@
 # Materiais de submissão do Pacebit
 
-Este documento reúne rascunhos para Google OAuth e Chrome Web Store. Ele não comprova publicação,
-verificação ou aprovação. Os placeholders entre colchetes devem ser substituídos somente depois da
-criação de um domínio próprio e dos respectivos recursos públicos.
+Este documento reúne materiais para Google OAuth e Chrome Web Store. Ele não comprova verificação
+ou aprovação. O placeholder restante deve ser substituído somente depois da produção do vídeo real.
 
 ## Pendências externas
 
-- `[PUBLIC_HOME_URL]` — homepage pública em domínio verificável;
-- `[PUBLIC_PRIVACY_URL]` — política no mesmo domínio da homepage;
-- `[PUBLIC_TERMS_URL]` — termos de uso públicos;
 - `[OAUTH_DEMO_VIDEO_URL]` — vídeo não listado demonstrando o fluxo real;
-- `[CHROME_WEB_STORE_URL]` — página criada após o primeiro envio.
+
+Recursos públicos preparados:
+
+- homepage: `https://pacebit.produtivo.dev/`;
+- política: `https://pacebit.produtivo.dev/privacy`;
+- termos: `https://pacebit.produtivo.dev/terms`;
+- Chrome Web Store: `https://chromewebstore.google.com/detail/jkpogflkipedlninnnplenlajoofkkfp/`.
 
 O repositório GitHub não será apresentado como substituto de domínio próprio para OAuth de
 produção.
@@ -35,8 +37,8 @@ realmente executado.
 - conclusão opcional da tarefa no Google após salvar a sessão;
 - sem backend, anúncios, telemetria ou sincronização própria.
 
-Links obrigatórios: `[PUBLIC_PRIVACY_URL]`, `[PUBLIC_TERMS_URL]` e contato
-`ricoamantino@gmail.com`.
+Links obrigatórios: `https://pacebit.produtivo.dev/privacy`,
+`https://pacebit.produtivo.dev/terms` e contato `ricoamantino@gmail.com`.
 
 ## Google Auth Platform
 
@@ -45,9 +47,9 @@ Links obrigatórios: `[PUBLIC_PRIVACY_URL]`, `[PUBLIC_TERMS_URL]` e contato
 - nome: `Pacebit`;
 - e-mail de suporte: `ricoamantino@gmail.com`;
 - e-mail de contato: `ricoamantino@gmail.com`;
-- homepage: `[PUBLIC_HOME_URL]`;
-- política: `[PUBLIC_PRIVACY_URL]`;
-- termos: `[PUBLIC_TERMS_URL]`;
+- homepage: `https://pacebit.produtivo.dev/`;
+- política: `https://pacebit.produtivo.dev/privacy`;
+- termos: `https://pacebit.produtivo.dev/terms`;
 - audience: `External`;
 - status durante desenvolvimento: `Testing` com contas de teste explícitas;
 - cliente: `Chrome Extension`;
@@ -203,8 +205,8 @@ enviados separadamente e não pertencem ao pacote executável.
 
 ## Checklist antes de copiar para os consoles
 
-- substituir todos os placeholders;
-- publicar homepage, política e termos no mesmo domínio próprio;
+- substituir o placeholder do vídeo OAuth;
+- confirmar homepage, política e termos publicados no mesmo domínio próprio;
 - verificar o domínio no Google Search Console com conta proprietária ou editora do projeto;
 - confirmar que a política pública é idêntica ao rascunho aprovado;
 - conferir scope, ID da extensão, client ID e contas de teste;

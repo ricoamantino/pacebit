@@ -2,12 +2,14 @@
 node_modules/
 .output/
 .wxt/
+.vercel/
 coverage/
 
 # Browser testing and local tooling
 .playwright-cli/
 playwright-report/
 test-results/
+output/playwright/
 
 # Environment files
 .env
