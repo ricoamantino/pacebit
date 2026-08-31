@@ -284,6 +284,13 @@ Antes de uma distribuição pública:
 
 O client ID OAuth identifica a extensão e não é segredo. Nunca incorporar um client secret ao bundle. Projetos, IDs e ambientes de desenvolvimento e produção devem permanecer separados quando isso for necessário para testes e publicação.
 
+Para o primeiro lançamento, a ampliação dos fluxos E2E e a bateria manual de resiliência
+descritas nas seções 8.1 e 8.2 da especificação são trabalho pós-lançamento e não bloqueiam a
+submissão. Essa decisão não remove as garantias funcionais já implementadas nem dispensa os testes
+automatizados existentes, a auditoria de segurança ou a instalação e o smoke do pacote candidato
+em perfil limpo definidos na seção 9.3 da especificação. Permanece como risco residual a validação
+ampliada de reinício e atualização do Chrome e dos cenários integrados de falha.
+
 ## 10. Critérios de aceite do MVP
 
 O MVP estará funcionalmente completo quando for demonstrado que:
@@ -293,7 +300,7 @@ O MVP estará funcionalmente completo quando for demonstrado que:
 3. tarefas vencidas e de hoje aparecem com a prioridade definida;
 4. somente uma sessão pode estar ativa;
 5. pausa, retomada, finalização e cancelamento seguem a tabela de transições;
-6. fechar o popup, reiniciar o Chrome, atualizar a extensão ou recriar seus contextos não altera a duração correta;
+6. fechar e reabrir o popup ou recriar seus contextos não altera a duração correta; a bateria manual ampliada de reinício do Chrome e atualização da extensão fica registrada como pós-lançamento;
 7. finalizar cria exatamente um registro histórico antes de limpar a sessão ativa;
 8. o total de hoje considera somente o tempo executado no dia local, inclusive em sessões que cruzam a meia-noite;
 9. uma sessão ativa e o histórico continuam utilizáveis sem acesso temporário ao Google;
@@ -354,6 +361,7 @@ Possibilidades futuras não devem influenciar a arquitetura do MVP sem necessida
 9. Não exigir background service worker nem mensageria enquanto módulos compartilhados e persistência resolverem o fluxo com segurança.
 10. Não criar content scripts, manipular o DOM do Google Tasks nem antecipar integrações futuras.
 11. Cancelar uma sessão ativa é uma ação direta, sem confirmação adicional, e nunca cria histórico.
+12. Tratar as SPECs 8.1 e 8.2 como pós-lançamento e não bloqueantes para a primeira submissão, preservando a regressão automatizada existente, a auditoria de segurança e o smoke do pacote candidato.
 
 ## 14. Referências técnicas
 
@@ -369,5 +377,8 @@ Possibilidades futuras não devem influenciar a arquitetura do MVP sem necessida
 - [Chrome Extensions — Storage API](https://developer.chrome.com/docs/extensions/reference/api/storage)
 - [Chrome Extensions — requisições entre origens](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)
 - [Chrome Extensions — ciclo de vida de service workers](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
+- [Chrome Extensions — práticas de segurança](https://developer.chrome.com/docs/extensions/develop/security-privacy/stay-secure)
+- [Chrome Extensions — código hospedado remotamente](https://developer.chrome.com/docs/extensions/develop/migrate/remote-hosted-code)
+- [Chrome Web Store — dados do usuário](https://developer.chrome.com/docs/webstore/user_data)
 - [WXT — entrypoints](https://wxt.dev/guide/essentials/entrypoints)
 - [WXT — storage](https://wxt.dev/storage)

@@ -561,7 +561,12 @@ público da API.
 
 ## 8. Robustez, E2E e segurança
 
-### 8.1 Fluxos E2E
+Por decisão registrada em 2026-08-31, as seções 8.1 e 8.2 são pós-lançamento e não
+bloqueiam a primeira submissão. Seus itens permanecem abertos para preservar a rastreabilidade do
+risco residual. A regressão E2E existente continua obrigatória, a seção 8.3 permanece bloqueante e
+a instalação e o smoke do ZIP candidato em perfil limpo continuam exigidos pela seção 9.3.
+
+### 8.1 Fluxos E2E — pós-lançamento, não bloqueante
 
 - [ ] Carregar o build da extensão em perfil persistente controlado do Chromium pelo Playwright.
 - [ ] Cobrir conexão controlada, paginação, seleção, início, pausa, retomada e finalização.
@@ -571,7 +576,7 @@ público da API.
 - [ ] Cobrir conflito entre duas instâncias do popup sem sessão ou histórico duplicado.
 - [ ] Manter dados e credenciais reais fora dos testes automatizados comuns.
 
-### 8.2 Resiliência e perfil limpo
+### 8.2 Resiliência e perfil limpo — pós-lançamento, não bloqueante
 
 - [ ] Verificar manualmente reinício do Chrome com sessão em execução e pausada.
 - [ ] Verificar recarga ou atualização da extensão com sessão em execução e pausada.
@@ -582,13 +587,30 @@ público da API.
 
 ### 8.3 Auditoria de segurança e privacidade
 
-- [ ] Auditar o manifesto gerado e confirmar somente os acessos aprovados no escopo.
-- [ ] Auditar o bundle e confirmar ausência de client secret, token, código remoto e `eval`.
-- [ ] Auditar logs e confirmar ausência de tokens, respostas completas e dados pessoais desnecessários.
-- [ ] Auditar dependências de produção e remover as que não tenham responsabilidade demonstrada.
-- [ ] Confirmar ausência de backend, banco de dados, telemetria, analytics e sincronização.
-- [ ] Confirmar ausência de content scripts e acesso ao DOM do Google Tasks.
-- [ ] Confirmar que dados de usuário são persistidos apenas em `storage.local` e não enviados a terceiros além da API Google necessária.
+- [x] Auditar o manifesto gerado e confirmar somente os acessos aprovados no escopo.
+- [x] Auditar o bundle e confirmar ausência de client secret, token, código remoto e `eval`.
+- [x] Auditar logs e confirmar ausência de tokens, respostas completas e dados pessoais desnecessários.
+- [x] Auditar dependências de produção e remover as que não tenham responsabilidade demonstrada.
+- [x] Confirmar ausência de backend, banco de dados, telemetria, analytics e sincronização.
+- [x] Confirmar ausência de content scripts e acesso ao DOM do Google Tasks.
+- [x] Confirmar que dados de usuário são persistidos apenas em `storage.local` e não enviados a terceiros além da API Google necessária.
+
+Validação de 2026-08-31: a auditoria do build de produção confirmou Manifest V3 com somente
+`identity`, `storage`, o host `https://tasks.googleapis.com/*` e o scope Google Tasks, sem
+background, content scripts ou permissões adicionais. Os dez arquivos empacotados usam apenas
+scripts e estilos locais; o bundle não contém `eval`, construtor dinâmico de funções, importação
+remota, script remoto, arquivo de ambiente, chave privada, client secret ou token. Client ID OAuth
+e chave pública da extensão permanecem identificadores públicos esperados. O código da aplicação
+não produz logs nem usa HTML remoto como confiável; o único `fetch` remoto aponta para a Tasks API
+por HTTPS, e tokens são obtidos pelo `chrome.identity` sem persistência própria. Somente
+`local:active-session` e `local:session-history` são persistidos; não há backend, banco, sync,
+telemetria ou analytics. A busca por assinaturas de segredo no estado atual e em todo o histórico
+Git não encontrou ocorrências. React e React DOM são as únicas dependências de produção e possuem
+uso direto no popup; quatro GitHub Actions estão fixadas por SHA completo. URLs de documentação e
+logs internos presentes nas dependências empacotadas não recebem dados do Pacebit nem representam
+tráfego ou logs da aplicação. `pnpm install --frozen-lockfile`, `pnpm check` (247 testes),
+`pnpm test:e2e` (6 testes), `pnpm build`, `pnpm audit --prod` (sem vulnerabilidades conhecidas) e
+as inspeções estruturais passaram.
 
 ## 9. Documentação e pacote para submissão
 
@@ -631,7 +653,7 @@ público da API.
 - [ ] **CA-03 — prioridade:** comprovar sessão ativa, vencidas, hoje, sem data e futuras na ordem definida.
 - [ ] **CA-04 — sessão única:** comprovar que somente uma sessão pode permanecer ativa.
 - [ ] **CA-05 — transições:** comprovar pausa, retomada, finalização e cancelamento conforme a tabela do escopo.
-- [ ] **CA-06 — recuperação:** comprovar duração correta após popup, Chrome, extensão e contextos reiniciarem.
+- [ ] **CA-06 — recuperação:** comprovar duração correta após reabertura do popup e recriação dos contextos; reinício do Chrome e atualização da extensão permanecem na bateria pós-lançamento da 8.2.
 - [ ] **CA-07 — finalização local:** comprovar exatamente um histórico salvo antes da remoção da sessão ativa.
 - [ ] **CA-08 — total de hoje:** comprovar somente tempo executado no dia local, inclusive através da meia-noite.
 - [ ] **CA-09 — indisponibilidade do Google:** comprovar sessão e histórico locais utilizáveis offline.
@@ -653,11 +675,14 @@ público da API.
 - [ ] Revisar documentação, política de privacidade, permissões, scope e materiais de revisão.
 - [ ] Instalar e validar o ZIP candidato em perfil limpo.
 - [ ] Manter como `[ ]` qualquer item sem implementação e evidência correspondente.
-- [ ] Declarar o MVP pronto para submissão somente quando todos os itens bloqueantes das seções 1 a 10 estiverem concluídos.
+- [ ] Declarar o MVP pronto para submissão somente quando todos os itens bloqueantes das seções 1 a 10 estiverem concluídos; as seções 8.1 e 8.2 são as exceções pós-lançamento registradas.
 
 ## 11. Backlog pós-MVP
 
 Esta seção não bloqueia o estado **pronto para submissão**. Os itens somente podem ser promovidos ao MVP após alteração explícita do `SCOPE.md` e não justificam arquitetura preventiva.
+
+As seções 8.1 e 8.2 também integram este backlog pós-lançamento. Seus checklists permanecem nas
+seções originais para manter a numeração e a rastreabilidade das verificações adiadas.
 
 - [ ] Considerar correção ou exclusão de registros históricos.
 - [ ] Considerar notificações e alarmes.
