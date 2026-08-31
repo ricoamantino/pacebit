@@ -616,23 +616,37 @@ as inspeções estruturais passaram.
 
 ### 9.1 Documentação do projeto
 
-- [ ] Criar README com objetivo, requisitos, instalação local e jornada principal.
-- [ ] Documentar configuração do projeto Google Cloud, client ID de desenvolvimento e ID da extensão.
-- [ ] Documentar todos os scripts de desenvolvimento e validação.
-- [ ] Documentar como executar testes unitários, E2E controlados e smokes reais.
-- [ ] Documentar arquitetura mínima, responsabilidades e persistência local.
-- [ ] Documentar limitações conhecidas, incluindo recorrência e ausência de sincronização.
-- [ ] Manter `AGENTS.md`, `SCOPE.md` e esta SPEC coerentes com o estado final.
+- [x] Criar README com objetivo, requisitos, instalação local e jornada principal.
+- [x] Documentar configuração do projeto Google Cloud, client ID de desenvolvimento e ID da extensão.
+- [x] Documentar todos os scripts de desenvolvimento e validação.
+- [x] Documentar como executar testes unitários, E2E controlados e smokes reais.
+- [x] Documentar arquitetura mínima, responsabilidades e persistência local.
+- [x] Documentar limitações conhecidas, incluindo recorrência e ausência de sincronização.
+- [x] Manter `AGENTS.md`, `SCOPE.md` e esta SPEC coerentes com o estado final.
+
+Validação em 31 de agosto de 2026: o `README.md` documenta jornada, requisitos, ambientes OAuth,
+configuração Google Cloud, scripts, testes, arquitetura, persistência e limitações. Foram adicionados
+licença MIT, política de privacidade, termos de uso e referências cruzadas validadas entre os
+documentos. Nenhum client ID OAuth real foi registrado na documentação.
 
 ### 9.2 Privacidade, consentimento e revisão
 
-- [ ] Criar política de privacidade coerente com leitura do Google Tasks e armazenamento local.
-- [ ] Declarar dados acessados, finalidade, retenção, ausência de venda, compartilhamento próprio e sincronização.
-- [ ] Preparar justificativa do scope completo de Google Tasks baseada somente em leitura e conclusão explícita.
-- [ ] Preparar texto da tela de consentimento coerente com a interface e a política de privacidade.
-- [ ] Preparar instruções de revisão que demonstrem autenticação, timer, histórico e conclusão explícita.
+- [x] Criar política de privacidade coerente com leitura do Google Tasks e armazenamento local.
+- [x] Declarar dados acessados, finalidade, retenção, ausência de venda, compartilhamento próprio e sincronização.
+- [x] Preparar justificativa do scope completo de Google Tasks baseada somente em leitura e conclusão explícita.
+- [x] Preparar texto da tela de consentimento coerente com a interface e a política de privacidade.
+- [x] Preparar instruções de revisão que demonstrem autenticação, timer, histórico e conclusão explícita.
 - [ ] Preparar os materiais exigidos para verificação OAuth aplicável sem registrar aprovação ainda não recebida.
-- [ ] Preparar descrição, ícones, imagens e declarações de privacidade exigidas pela Chrome Web Store.
+- [x] Preparar descrição, ícones, imagens e declarações de privacidade exigidas pela Chrome Web Store.
+
+Validação em 31 de agosto de 2026: `pnpm install --frozen-lockfile`, `pnpm check`,
+`pnpm test:e2e`, `pnpm build`, `pnpm audit --prod` e `git diff --check` foram
+concluídos. Passaram 247 testes unitários e 6 testes E2E. Foram inspecionados cinco PNGs:
+ícone 128×128, tile 440×280 e três screenshots 1280×800 com dados sintéticos. Dimensões e links
+Markdown foram validados automaticamente. O bundle de produção não contém a página de preview nem
+seus dados, e o manifesto manteve somente os acessos aprovados. Política, termos, textos bilíngues,
+declarações e roteiro de revisão permanecem rascunhos locais. O pacote final de verificação OAuth
+continua aberto até existirem domínio próprio, URLs públicas e vídeo real.
 
 ### 9.3 Build distribuível
 
