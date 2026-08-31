@@ -169,6 +169,38 @@ Os arquivos rastreáveis ficam em [`../store-assets`](../store-assets):
 Não há marquee nem vídeo promocional. O vídeo OAuth será produzido separadamente com uma conta de
 teste real.
 
+## Pacote candidato
+
+O candidato deve ser o ZIP produzido pelo job `Quality` para um push da `main`, e não uma cópia
+posterior de `.output/chrome-mv3`. O procedimento é:
+
+1. confirmar árvore de trabalho limpa, versão e commit com `git status --short`,
+   `node -p 'require("./package.json").version'` e `git rev-parse HEAD`;
+2. executar `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test:e2e`, `pnpm build`,
+   `pnpm zip` e `pnpm audit --prod`;
+3. enviar o commit para `main` e aguardar todas as etapas do workflow `CI`;
+4. baixar o artefato `pacebit-chrome-mv3-<commit>` da execução aprovada;
+5. calcular o SHA-256 e confirmar com `unzip -Z1` que `manifest.json` está na raiz e que somente
+   arquivos executáveis e ícones da extensão estão presentes;
+6. extrair esse ZIP em diretório temporário, carregar exatamente a pasta extraída em um perfil
+   limpo do Chrome e executar a jornada principal com a conta de teste;
+7. registrar na SPEC a versão, o commit, a execução do CI, o nome do artefato, o tamanho, o
+   SHA-256 e somente os resultados realmente observados.
+
+ZIP, perfil temporário, tokens e credenciais não entram no Git. Materiais gráficos da loja são
+enviados separadamente e não pertencem ao pacote executável.
+
+### Candidato 0.1.0
+
+- origem: commit `206e92443357d3749d0b676eb7e7f0fa2276231a` da `main`;
+- CI: execução [`33429712289`](https://github.com/ricoamantino/pacebit/actions/runs/33429712289),
+  job `Quality` aprovado;
+- artefato: `pacebit-chrome-mv3-206e92443357d3749d0b676eb7e7f0fa2276231a`;
+- arquivo: `pacebit-0.1.0-chrome.zip`, 93.777 bytes;
+- SHA-256: `9f666340d6173e0096df35f994c2e2eaedd6951c9e158f10c9cd712cc1627a8a`;
+- inspeção estrutural e de manifesto: aprovada;
+- smoke em perfil limpo: pendente.
+
 ## Checklist antes de copiar para os consoles
 
 - substituir todos os placeholders;

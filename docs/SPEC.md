@@ -650,13 +650,27 @@ continua aberto até existirem domínio próprio, URLs públicas e vídeo real.
 
 ### 9.3 Build distribuível
 
-- [ ] Definir comando ou procedimento reprodutível para gerar o ZIP de submissão.
-- [ ] Gerar build de produção com lockfile imutável e árvore de trabalho conhecida.
-- [ ] Confirmar que o ZIP contém somente arquivos necessários à extensão.
+- [x] Definir comando ou procedimento reprodutível para gerar o ZIP de submissão.
+- [x] Gerar build de produção com lockfile imutável e árvore de trabalho conhecida.
+- [x] Confirmar que o ZIP contém somente arquivos necessários à extensão.
 - [ ] Instalar exatamente o pacote gerado em perfil limpo.
 - [ ] Executar smoke final da jornada principal a partir do pacote.
-- [ ] Registrar versão, origem do commit e checks executados para o artefato candidato.
+- [x] Registrar versão, origem do commit e checks executados para o artefato candidato.
 - [ ] Confirmar que os materiais estão prontos para submissão sem depender da aprovação externa.
+
+Validação parcial em 31 de agosto de 2026: o commit
+`206e92443357d3749d0b676eb7e7f0fa2276231a`, versão `0.1.0`, passou localmente por
+`pnpm install --frozen-lockfile`, `pnpm check` com 247 testes unitários, `pnpm test:e2e` com 6
+testes no Chromium, `pnpm build`, `pnpm zip`, `pnpm audit --prod` e `git diff --check`. A execução
+[`33429712289`](https://github.com/ricoamantino/pacebit/actions/runs/33429712289) do CI aprovou
+instalação, check, build, pacote e upload do artefato
+`pacebit-chrome-mv3-206e92443357d3749d0b676eb7e7f0fa2276231a`. O ZIP baixado do CI possui
+93.777 bytes e SHA-256 `9f666340d6173e0096df35f994c2e2eaedd6951c9e158f10c9cd712cc1627a8a`.
+Sua inspeção confirmou `manifest.json` na raiz, dez arquivos executáveis ou ícones esperados,
+Manifest V3, versão, ID estável, OAuth, permissões e host aprovados, sem background, content
+scripts, credenciais, código remoto ou arquivos alheios à extensão. A instalação confirmada e o
+smoke no perfil limpo permanecem abertos para execução manual pelo mantenedor. O último item
+continua bloqueado por domínio, URLs públicas e vídeo OAuth.
 
 ## 10. Gate final do MVP
 
